@@ -161,8 +161,11 @@ export const store = {
         if (delAllError) throw delAllError;
       }
 
-      // 2. Upsert the current list of products with tenant_id injected
-      const productsWithTenant = products.map((p) => ({ ...p, tenant_id: tenantId }));
+      // 2. Upsert the current list of products with tenant_id injected (omitting created_at to avoid null value constraint errors)
+      const productsWithTenant = products.map((p: any) => {
+        const { created_at, ...rest } = p;
+        return { ...rest, tenant_id: tenantId };
+      });
       const { error: upsertError } = await supabase
         .from("products")
         .upsert(productsWithTenant);
