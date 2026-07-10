@@ -20,9 +20,20 @@ export type Sale = {
   total: number;
 };
 
-const PRODUCTS_KEY = "pos.products";
-const SALES_KEY = "pos.sales";
-const SETTINGS_KEY = "pos.settings";
+async function getProductsKey(): Promise<string> {
+  const tenantId = await getTenantId();
+  return tenantId ? `pos.products.${tenantId}` : "pos.products.default";
+}
+
+async function getSalesKey(): Promise<string> {
+  const tenantId = await getTenantId();
+  return tenantId ? `pos.sales.${tenantId}` : "pos.sales.default";
+}
+
+async function getSettingsKey(): Promise<string> {
+  const tenantId = await getTenantId();
+  return tenantId ? `pos.settings.${tenantId}` : "pos.settings.default";
+}
 
 export type Settings = {
   shopName: string;
@@ -100,9 +111,10 @@ export const store = {
     if (isSuspended()) {
       throw new Error("Account suspended");
     }
+    const pKey = await getProductsKey();
     const tenantId = await getTenantId();
     if (!hasSupabase || !tenantId) {
-      return readLocal<Product[]>(PRODUCTS_KEY, seedProducts);
+      return readLocal<Product[]>(pKey, seedProducts);
     }
     try {
       const { data, error } = await supabase
@@ -112,10 +124,11 @@ export const store = {
         .order("name", { ascending: true });
 
       if (error) throw error;
+      writeLocal(pKey, data); // Update cache
       return data as Product[];
     } catch (err) {
       console.warn("Supabase fetch products failed, falling back to localStorage:", err);
-      return readLocal<Product[]>(PRODUCTS_KEY, seedProducts);
+      return readLocal<Product[]>(pKey, seedProducts);
     }
   },
 
@@ -123,9 +136,10 @@ export const store = {
     if (isSuspended()) {
       throw new Error("Account suspended");
     }
+    const pKey = await getProductsKey();
     const tenantId = await getTenantId();
     // Keep local storage updated as cache / fallback
-    writeLocal(PRODUCTS_KEY, products);
+    writeLocal(pKey, products);
 
     if (!hasSupabase || !tenantId) return;
     try {
@@ -162,9 +176,10 @@ export const store = {
     if (isSuspended()) {
       throw new Error("Account suspended");
     }
+    const sKey = await getSalesKey();
     const tenantId = await getTenantId();
     if (!hasSupabase || !tenantId) {
-      return readLocal<Sale[]>(SALES_KEY, []);
+      return readLocal<Sale[]>(sKey, []);
     }
     try {
       const { data, error } = await supabase
@@ -188,10 +203,11 @@ export const store = {
         .order("date", { ascending: false });
 
       if (error) throw error;
+      writeLocal(sKey, data); // Update cache
       return data as unknown as Sale[];
     } catch (err) {
       console.warn("Supabase fetch sales failed, falling back to localStorage:", err);
-      return readLocal<Sale[]>(SALES_KEY, []);
+      return readLocal<Sale[]>(sKey, []);
     }
   },
 
@@ -199,10 +215,11 @@ export const store = {
     if (isSuspended()) {
       throw new Error("Account suspended");
     }
+    const sKey = await getSalesKey();
     const tenantId = await getTenantId();
     // Keep local storage updated
-    const localSales = readLocal<Sale[]>(SALES_KEY, []);
-    writeLocal(SALES_KEY, [sale, ...localSales]);
+    const localSales = readLocal<Sale[]>(sKey, []);
+    writeLocal(sKey, [sale, ...localSales]);
 
     if (!hasSupabase || !tenantId) return;
     try {
@@ -241,9 +258,10 @@ export const store = {
     if (isSuspended()) {
       throw new Error("Account suspended");
     }
+    const setKey = await getSettingsKey();
     const tenantId = await getTenantId();
     if (!hasSupabase || !tenantId) {
-      return readLocal<Settings>(SETTINGS_KEY, defaultSettings);
+      return readLocal<Settings>(setKey, defaultSettings);
     }
     try {
       const { data, error } = await supabase
@@ -263,19 +281,22 @@ export const store = {
           currency: defaultSettings.currency,
           tax_rate: defaultSettings.taxRate,
         });
+        writeLocal(setKey, defaultSettings);
         return defaultSettings;
       }
 
-      return {
+      const settingsObj = {
         shopName: data.shop_name,
         currency: data.currency,
         taxRate: Number(data.tax_rate),
         ownerName: data.owner_name,
         pinHash: data.pin_hash,
       };
+      writeLocal(setKey, settingsObj); // Update cache
+      return settingsObj;
     } catch (err) {
       console.warn("Supabase fetch settings failed, falling back to localStorage:", err);
-      return readLocal<Settings>(SETTINGS_KEY, defaultSettings);
+      return readLocal<Settings>(setKey, defaultSettings);
     }
   },
 
@@ -283,9 +304,10 @@ export const store = {
     if (isSuspended()) {
       throw new Error("Account suspended");
     }
+    const setKey = await getSettingsKey();
     const tenantId = await getTenantId();
     // Keep local storage updated
-    writeLocal(SETTINGS_KEY, s);
+    writeLocal(setKey, s);
 
     if (!hasSupabase || !tenantId) return;
     try {
