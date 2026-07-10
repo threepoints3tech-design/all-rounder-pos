@@ -10,10 +10,10 @@ import {
   Lock,
   Mail,
   Store,
-  Trash2,
-  AlertCircle,
   CheckCircle,
+  AlertCircle,
   LogOut,
+  UserCheck,
 } from "lucide-react";
 import { auth, type UserProfile } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -32,7 +32,7 @@ export const Route = createFileRoute("/admin")({
 interface TenantInfo {
   id: string;
   name: string;
-  status: "active" | "suspended" | "inactive";
+  status: "active" | "suspended" | "inactive" | "pending";
   subscription_ends_at: string | null;
   created_at: string;
   owner_email?: string;
@@ -73,7 +73,7 @@ function AdminPage() {
     }
 
     try {
-      // Fetch tenants and their owners
+      // Fetch tenants
       const { data: tenantData, error: tError } = await supabase
         .from("tenants")
         .select(`
@@ -130,12 +130,43 @@ function AdminPage() {
       if (err) throw err;
 
       setTenants((prev) =>
-        prev.map((t) => (t.id === tenantId ? { ...t, status: nextStatus } : t))
+        prev.map((t) => (t.id === tenantId ? { ...t, status: nextStatus as any } : t))
       );
       setSuccess(`ဆိုင်အကောင့် အခြေအနေကို ${nextStatus === "active" ? "ဖွင့်လှစ်ပြီး" : "ဆိုင်းငံ့ပြီး"} ပါပြီ ✓`);
       setTimeout(() => setSuccess(null), 2500);
     } catch (err: any) {
       setError(err.message || "ပြင်ဆင်၍မရပါ");
+    }
+  };
+
+  const handleApproveTenant = async (tenantId: string) => {
+    if (!supabase) return;
+
+    try {
+      const oneMonthExpiry = new Date();
+      oneMonthExpiry.setMonth(oneMonthExpiry.getMonth() + 1);
+
+      const { error: err } = await supabase
+        .from("tenants")
+        .update({
+          status: "active",
+          subscription_ends_at: oneMonthExpiry.toISOString(),
+        })
+        .eq("id", tenantId);
+
+      if (err) throw err;
+
+      setTenants((prev) =>
+        prev.map((t) =>
+          t.id === tenantId
+            ? { ...t, status: "active", subscription_ends_at: oneMonthExpiry.toISOString() }
+            : t
+        )
+      );
+      setSuccess("ဆိုင်လျှောက်ထားမှုကို အတည်ပြုပြီးပါပြီ (၁ လ သက်တမ်းသတ်မှတ်ခဲ့သည်) ✓");
+      setTimeout(() => setSuccess(null), 2500);
+    } catch (err: any) {
+      setError(err.message || "အတည်ပြု၍မရပါ");
     }
   };
 
@@ -207,7 +238,6 @@ function AdminPage() {
       });
 
       if (authErr) {
-        // Rollback tenant row if user creation fails
         await supabase.from("tenants").delete().eq("id", tenant.id);
         throw authErr;
       }
@@ -289,7 +319,7 @@ function AdminPage() {
           </div>
         )}
         {success && (
-          <div className="mb-4 flex items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-xs text-emerald-500">
+          <div className="mb-4 flex items-center gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-xs text-emerald-600">
             <CheckCircle className="h-4 w-4 shrink-0" />
             <p>{success}</p>
           </div>
@@ -316,6 +346,7 @@ function AdminPage() {
                 <tr>
                   <th className="p-4 font-semibold">ဆိုင်အမည်</th>
                   <th className="p-4 font-semibold">အကောင့် Email</th>
+                  <th className="p-4 font-semibold">စတင်ဝင်ရောက်သည့်ရက်</th>
                   <th className="p-4 font-semibold">သက်တမ်းကုန်ဆုံးရက်</th>
                   <th className="p-4 font-semibold">အခြေအနေ</th>
                   <th className="p-4 font-semibold text-right">လုပ်ဆောင်ချက်</th>
@@ -324,7 +355,7 @@ function AdminPage() {
               <tbody className="divide-y divide-border">
                 {tenants.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={6} className="p-8 text-center text-muted-foreground">
                       ဆိုင်အကောင့် မရှိသေးပါ
                     </td>
                   </tr>
@@ -336,8 +367,13 @@ function AdminPage() {
                         {t.name}
                       </td>
                       <td className="p-4 text-muted-foreground">{t.owner_email}</td>
+                      <td className="p-4 text-xs text-muted-foreground">
+                        {new Date(t.created_at).toLocaleDateString()}
+                      </td>
                       <td className="p-4 text-xs font-medium">
-                        {t.subscription_ends_at ? (
+                        {t.status === "pending" ? (
+                          <span className="text-amber-500 italic">Pending Approval</span>
+                        ) : t.subscription_ends_at ? (
                           <span className="flex items-center gap-1">
                             <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                             {new Date(t.subscription_ends_at).toLocaleDateString()}
@@ -351,36 +387,53 @@ function AdminPage() {
                           className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                             t.status === "active"
                               ? "bg-emerald-500/10 text-emerald-500"
+                              : t.status === "pending"
+                              ? "bg-amber-500/10 text-amber-500"
                               : "bg-destructive/10 text-destructive"
                           }`}
                         >
-                          {t.status === "active" ? "Active" : "Suspended"}
+                          {t.status === "active"
+                            ? "Active"
+                            : t.status === "pending"
+                            ? "Pending"
+                            : "Suspended"}
                         </span>
                       </td>
                       <td className="p-4 text-right">
                         <div className="flex justify-end gap-2">
-                          <button
-                            onClick={() => handleToggleStatus(t.id, t.status)}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-accent"
-                            title={t.status === "active" ? "ဆိုင်းငံ့ရန်" : "အသက်သွင်းရန်"}
-                          >
-                            {t.status === "active" ? (
-                              <>
-                                <ToggleLeft className="h-4 w-4 text-destructive" /> ဆိုင်းငံ့မည်
-                              </>
-                            ) : (
-                              <>
-                                <ToggleRight className="h-4 w-4 text-emerald-500" /> ဖွင့်လှစ်မည်
-                              </>
-                            )}
-                          </button>
+                          {t.status === "pending" ? (
+                            <button
+                              onClick={() => handleApproveTenant(t.id)}
+                              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-500 px-3.5 text-xs font-bold text-white hover:opacity-90 shadow-md shadow-emerald-500/10"
+                            >
+                              <UserCheck className="h-4 w-4" /> အတည်ပြုမည် (Approve)
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => handleToggleStatus(t.id, t.status)}
+                                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-accent"
+                                title={t.status === "active" ? "ဆိုင်းငံ့ရန်" : "အသက်သွင်းရန်"}
+                              >
+                                {t.status === "active" ? (
+                                  <>
+                                    <ToggleLeft className="h-4 w-4 text-destructive" /> ဆိုင်းငံ့မည်
+                                  </>
+                                ) : (
+                                  <>
+                                    <ToggleRight className="h-4 w-4 text-emerald-500" /> ဖွင့်လှစ်မည်
+                                  </>
+                                )}
+                              </button>
 
-                          <button
-                            onClick={() => handleExtendSubscription(t.id, 1)}
-                            className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-xs font-semibold hover:bg-accent"
-                          >
-                            +၁ လတိုးရန်
-                          </button>
+                              <button
+                                onClick={() => handleExtendSubscription(t.id, 1)}
+                                className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-xs font-semibold hover:bg-accent"
+                              >
+                                +၁ လတိုးရန်
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
