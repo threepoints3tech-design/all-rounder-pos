@@ -100,10 +100,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     }
 
     // Check if the tenant/shop status is active
-    if (profile.tenant_status === "suspended" || profile.tenant_status === "inactive") {
+    const isTenantInactive = profile.tenant_status === "suspended" || 
+                             profile.tenant_status === "inactive" || 
+                             profile.tenant_status === "pending";
+
+    if (isTenantInactive) {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("pos.suspended", "true");
+      }
       throw redirect({
         to: "/suspended",
       });
+    } else {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("pos.suspended");
+      }
     }
 
     // If super_admin, force redirection to /admin (unless already there)

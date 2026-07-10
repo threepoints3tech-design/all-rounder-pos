@@ -9,6 +9,11 @@ export function Shell({ children }: { children: ReactNode }) {
   const [locked, setLocked] = useState(false);
 
   useEffect(() => {
+    if (typeof window !== "undefined" && window.localStorage.getItem("pos.suspended") === "true") {
+      window.location.href = "/suspended";
+      return;
+    }
+
     store.getSettings().then((s) => {
       setLocked(Boolean(s.pinHash) && !lock.isUnlocked());
       setReady(true);

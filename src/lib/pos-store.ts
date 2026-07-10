@@ -90,8 +90,16 @@ function writeLocal<T>(key: string, value: T) {
 // Check if Supabase is configured and successfully initialized
 const hasSupabase = supabase !== null;
 
+function isSuspended(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem("pos.suspended") === "true";
+}
+
 export const store = {
   getProducts: async (): Promise<Product[]> => {
+    if (isSuspended()) {
+      throw new Error("Account suspended");
+    }
     const tenantId = await getTenantId();
     if (!hasSupabase || !tenantId) {
       return readLocal<Product[]>(PRODUCTS_KEY, seedProducts);
@@ -112,6 +120,9 @@ export const store = {
   },
 
   setProducts: async (products: Product[]) => {
+    if (isSuspended()) {
+      throw new Error("Account suspended");
+    }
     const tenantId = await getTenantId();
     // Keep local storage updated as cache / fallback
     writeLocal(PRODUCTS_KEY, products);
@@ -148,6 +159,9 @@ export const store = {
   },
 
   getSales: async (): Promise<Sale[]> => {
+    if (isSuspended()) {
+      throw new Error("Account suspended");
+    }
     const tenantId = await getTenantId();
     if (!hasSupabase || !tenantId) {
       return readLocal<Sale[]>(SALES_KEY, []);
@@ -182,6 +196,9 @@ export const store = {
   },
 
   addSale: async (sale: Sale) => {
+    if (isSuspended()) {
+      throw new Error("Account suspended");
+    }
     const tenantId = await getTenantId();
     // Keep local storage updated
     const localSales = readLocal<Sale[]>(SALES_KEY, []);
@@ -221,6 +238,9 @@ export const store = {
   },
 
   getSettings: async (): Promise<Settings> => {
+    if (isSuspended()) {
+      throw new Error("Account suspended");
+    }
     const tenantId = await getTenantId();
     if (!hasSupabase || !tenantId) {
       return readLocal<Settings>(SETTINGS_KEY, defaultSettings);
@@ -260,6 +280,9 @@ export const store = {
   },
 
   setSettings: async (s: Settings) => {
+    if (isSuspended()) {
+      throw new Error("Account suspended");
+    }
     const tenantId = await getTenantId();
     // Keep local storage updated
     writeLocal(SETTINGS_KEY, s);
