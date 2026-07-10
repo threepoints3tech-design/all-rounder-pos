@@ -70,6 +70,12 @@ create policy "Tenant owners can view own tenant" on public.tenants
     exists (select 1 from public.profiles where id = auth.uid() and tenant_id = tenants.id)
   );
 
+create policy "Allow anyone to insert pending tenants" on public.tenants
+  for insert with check (status = 'pending');
+
+create policy "Allow anyone to select pending tenants" on public.tenants
+  for select using (status = 'pending');
+
 -- Profiles policies
 create policy "Super admins have full access to profiles" on public.profiles
   for all using (
