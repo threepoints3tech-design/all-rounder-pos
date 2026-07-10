@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { ShoppingBag, Lock, Mail, AlertCircle, Store, CheckCircle2 } from "lucide-react";
+import { ShoppingBag, Lock, Mail, AlertCircle, Store, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { createClient } from "@supabase/supabase-js";
@@ -23,6 +23,7 @@ function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -57,19 +58,19 @@ function LoginPage() {
     const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
     try {
-      // 1. Create a pending tenant
+      // 1. Create a pending tenant (requires RLS insert policy for status = 'pending')
       const { data: tenant, error: tenantErr } = await supabase
         .from("tenants")
         .insert({
           name: shopName,
-          status: "pending", // Set default status as pending
+          status: "pending",
         })
         .select()
         .single();
 
       if (tenantErr) throw tenantErr;
 
-      // 2. Register the user
+      // 2. Register the user using a temp client to avoid logging out the current session
       const tempClient = createClient(supabaseUrl, supabaseAnonKey, {
         auth: { persistSession: false },
       });
@@ -87,21 +88,16 @@ function LoginPage() {
       const newUserId = authData.user?.id;
       if (!newUserId) throw new Error("အကောင့်ဖန်တီးမှု မအောင်မြင်ပါ");
 
-      // 3. Link profile to tenant
-      const { error: profileErr } = await supabase
+      // 3. Link profile to tenant using tempClient (which is authenticated as the new user)
+      // This satisfies the profile RLS policy "Users can view and edit own profile"
+      const { error: profileErr } = await tempClient
         .from("profiles")
         .update({ tenant_id: tenant.id })
         .eq("id", newUserId);
 
       if (profileErr) throw profileErr;
 
-      // 4. Create default settings
-      await supabase.from("settings").insert({
-        tenant_id: tenant.id,
-        shop_name: shopName,
-        currency: "Ks",
-        tax_rate: 5,
-      });
+      // Note: Default settings row is automatically created by the public.handle_new_tenant database trigger
 
       setSuccess("ဆိုင်အကောင့်လျှောက်ထားမှု အောင်မြင်ပါသည်။ စနစ်စီမံခန့်ခွဲသူ (Super Admin) မှ အတည်ပြုပေးသည်အထိ ခေတ္တစောင့်ဆိုင်းပေးပါရန် ✓");
       setIsLogin(true);
@@ -175,13 +171,20 @@ function LoginPage() {
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full rounded-2xl border border-border bg-background py-3 pl-11 pr-4 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring/40"
+                  className="w-full rounded-2xl border border-border bg-background py-3 pl-11 pr-12 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring/40"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
 
@@ -236,14 +239,21 @@ function LoginPage() {
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="အနည်းဆုံး ၆ လုံး"
                   minLength={6}
-                  className="w-full rounded-2xl border border-border bg-background py-3 pl-11 pr-4 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring/40"
+                  className="w-full rounded-2xl border border-border bg-background py-3 pl-11 pr-12 text-sm outline-none transition-shadow focus:ring-2 focus:ring-ring/40"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
 
@@ -263,6 +273,7 @@ function LoginPage() {
               setIsLogin(!isLogin);
               setError(null);
               setSuccess(null);
+              setShowPassword(false);
             }}
             className="text-xs font-semibold text-primary hover:underline"
           >

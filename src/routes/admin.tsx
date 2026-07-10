@@ -14,6 +14,8 @@ import {
   AlertCircle,
   LogOut,
   UserCheck,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { auth, type UserProfile } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
@@ -53,6 +55,7 @@ function AdminPage() {
   const [ownerPassword, setOwnerPassword] = useState("");
   const [subMonths, setSubMonths] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+  const [showModalPassword, setShowModalPassword] = useState(false);
 
   const navigate = useNavigate();
 
@@ -485,14 +488,21 @@ function AdminPage() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <input
-                      type="password"
+                      type={showModalPassword ? "text" : "password"}
                       required
                       value={ownerPassword}
                       onChange={(e) => setOwnerPassword(e.target.value)}
                       placeholder="အနည်းဆုံး ၆ လုံး"
                       minLength={6}
-                      className="w-full rounded-xl border border-border bg-background py-2 pl-9 pr-3 text-sm outline-none"
+                      className="w-full rounded-xl border border-border bg-background py-2 pl-9 pr-10 text-sm outline-none"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowModalPassword(!showModalPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showModalPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
                   </div>
                 </div>
 
