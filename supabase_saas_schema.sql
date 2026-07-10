@@ -1,5 +1,11 @@
 -- SaaS Multi-Tenant Database Migrations
 
+-- 0. Clean up old single-user test data to prevent null tenant_id conflicts
+truncate table public.sale_items cascade;
+truncate table public.sales cascade;
+truncate table public.products cascade;
+truncate table public.settings cascade;
+
 -- 1. Create Tenants Table
 create table if not exists public.tenants (
   id uuid default gen_random_uuid() primary key,
@@ -26,7 +32,7 @@ alter table public.sales add column if not exists tenant_id uuid references publ
 
 -- 5. Modify Settings Table to support multi-tenancy
 alter table public.settings add column if not exists tenant_id uuid references public.tenants(id) on delete cascade;
--- Remove constraints on settings if they restrict id=1 for multiple settings, since we want 1 settings row per tenant!
+-- Remove constraints on settings if they restrict id=1 for multiple settings
 alter table public.settings drop constraint if exists settings_id_check;
 alter table public.settings drop constraint if exists settings_pkey;
 alter table public.settings add primary key (id, tenant_id);
