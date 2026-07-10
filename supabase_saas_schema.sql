@@ -10,7 +10,7 @@ truncate table public.settings cascade;
 create table if not exists public.tenants (
   id uuid default gen_random_uuid() primary key,
   name text not null,
-  status text not null default 'active' check (status in ('active', 'suspended', 'inactive')),
+  status text not null default 'active' check (status in ('active', 'suspended', 'inactive', 'pending')),
   subscription_ends_at timestamp with time zone,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
@@ -45,12 +45,24 @@ alter table public.sales enable row level security;
 alter table public.settings enable row level security;
 alter table public.sale_items enable row level security; -- Junction table
 
--- 7. Define RLS Policies
+-- 7. Define Security Definer function to check if the user is a super admin
+-- This avoids infinite recursion in RLS policies by bypassing RLS during execution.
+create or replace function public.is_super_admin()
+returns boolean as $$
+begin
+  return exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'super_admin'
+  );
+end;
+$$ language plpgsql security definer;
+
+-- 8. Define RLS Policies
 
 -- Tenants policies
 create policy "Super admins have full access to tenants" on public.tenants
   for all using (
-    exists (select 1 from public.profiles where id = auth.uid() and role = 'super_admin')
+    public.is_super_admin()
   );
 
 create policy "Tenant owners can view own tenant" on public.tenants
@@ -61,18 +73,20 @@ create policy "Tenant owners can view own tenant" on public.tenants
 -- Profiles policies
 create policy "Super admins have full access to profiles" on public.profiles
   for all using (
-    exists (select 1 from public.profiles where id = auth.uid() and role = 'super_admin')
+    public.is_super_admin()
   );
 
 create policy "Users can view and edit own profile" on public.profiles
   for all using (
+    auth.uid() = id
+  ) with check (
     auth.uid() = id
   );
 
 -- Products policies
 create policy "Super admins have full access to products" on public.products
   for all using (
-    exists (select 1 from public.profiles where id = auth.uid() and role = 'super_admin')
+    public.is_super_admin()
   );
 
 create policy "Active tenant members have full access to products" on public.products
@@ -97,7 +111,7 @@ create policy "Active tenant members have full access to products" on public.pro
 -- Sales policies
 create policy "Super admins have full access to sales" on public.sales
   for all using (
-    exists (select 1 from public.profiles where id = auth.uid() and role = 'super_admin')
+    public.is_super_admin()
   );
 
 create policy "Active tenant members have full access to sales" on public.sales
@@ -122,7 +136,7 @@ create policy "Active tenant members have full access to sales" on public.sales
 -- Sale Items policies
 create policy "Super admins have full access to sale_items" on public.sale_items
   for all using (
-    exists (select 1 from public.profiles where id = auth.uid() and role = 'super_admin')
+    public.is_super_admin()
   );
 
 create policy "Active tenant members have full access to sale_items" on public.sale_items
@@ -149,7 +163,7 @@ create policy "Active tenant members have full access to sale_items" on public.s
 -- Settings policies
 create policy "Super admins have full access to settings" on public.settings
   for all using (
-    exists (select 1 from public.profiles where id = auth.uid() and role = 'super_admin')
+    public.is_super_admin()
   );
 
 create policy "Active tenant members have full access to settings" on public.settings
@@ -171,7 +185,7 @@ create policy "Active tenant members have full access to settings" on public.set
     )
   );
 
--- 8. Auto-create User Profile Trigger
+-- 9. Auto-create User Profile Trigger
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
