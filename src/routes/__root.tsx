@@ -6,6 +6,7 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  redirect,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
@@ -72,7 +73,57 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
+import { auth } from "../lib/auth";
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  beforeLoad: async ({ location }) => {
+    if (typeof window === "undefined") return;
+    const pathname = location.pathname;
+
+    // Allow access to login and suspended pages without auth
+    if (pathname === "/login" || pathname === "/suspended") {
+      return;
+    }
+
+    const session = await auth.getSession();
+    if (!session) {
+      throw redirect({
+        to: "/login",
+      });
+    }
+
+    const profile = await auth.getUserProfile();
+    if (!profile) {
+      throw redirect({
+        to: "/login",
+      });
+    }
+
+    // Check if the tenant/shop status is active
+    if (profile.tenant_status === "suspended" || profile.tenant_status === "inactive") {
+      throw redirect({
+        to: "/suspended",
+      });
+    }
+
+    // If super_admin, force redirection to /admin (unless already there)
+    if (profile.role === "super_admin" && pathname !== "/admin") {
+      throw redirect({
+        to: "/admin",
+      });
+    }
+
+    // Standard user should not access the /admin panel
+    if (profile.role !== "super_admin" && pathname === "/admin") {
+      throw redirect({
+        to: "/",
+      });
+    }
+
+    return {
+      profile,
+    };
+  },
   head: () => ({
     meta: [
       { charSet: "utf-8" },

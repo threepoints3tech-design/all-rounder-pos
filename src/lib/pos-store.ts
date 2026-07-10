@@ -65,6 +65,12 @@ export const seedProducts: Product[] = [
 ];
 
 import { supabase } from "./supabase";
+import { auth } from "./auth";
+
+async function getTenantId(): Promise<string | null> {
+  const profile = await auth.getUserProfile();
+  return profile ? profile.tenant_id : null;
+}
 
 function readLocal<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -86,13 +92,15 @@ const hasSupabase = supabase !== null;
 
 export const store = {
   getProducts: async (): Promise<Product[]> => {
-    if (!hasSupabase) {
+    const tenantId = await getTenantId();
+    if (!hasSupabase || !tenantId) {
       return readLocal<Product[]>(PRODUCTS_KEY, seedProducts);
     }
     try {
       const { data, error } = await supabase
         .from("products")
         .select("*")
+        .eq("tenant_id", tenantId)
         .order("name", { ascending: true });
 
       if (error) throw error;
@@ -104,31 +112,35 @@ export const store = {
   },
 
   setProducts: async (products: Product[]) => {
+    const tenantId = await getTenantId();
     // Keep local storage updated as cache / fallback
     writeLocal(PRODUCTS_KEY, products);
 
-    if (!hasSupabase) return;
+    if (!hasSupabase || !tenantId) return;
     try {
-      // 1. Find and delete products in the DB that are not in the new list
       const ids = products.map((p) => p.id);
+      
+      // 1. Delete products in the DB that belong to this tenant and are not in the new list
       if (ids.length > 0) {
         const { error: delError } = await supabase
           .from("products")
           .delete()
+          .eq("tenant_id", tenantId)
           .not("id", "in", `(${ids.join(",")})`);
         if (delError) throw delError;
       } else {
         const { error: delAllError } = await supabase
           .from("products")
           .delete()
-          .neq("id", "");
+          .eq("tenant_id", tenantId);
         if (delAllError) throw delAllError;
       }
 
-      // 2. Upsert the current list of products
+      // 2. Upsert the current list of products with tenant_id injected
+      const productsWithTenant = products.map((p) => ({ ...p, tenant_id: tenantId }));
       const { error: upsertError } = await supabase
         .from("products")
-        .upsert(products);
+        .upsert(productsWithTenant);
       if (upsertError) throw upsertError;
     } catch (err) {
       console.error("Supabase setProducts failed:", err);
@@ -136,7 +148,8 @@ export const store = {
   },
 
   getSales: async (): Promise<Sale[]> => {
-    if (!hasSupabase) {
+    const tenantId = await getTenantId();
+    if (!hasSupabase || !tenantId) {
       return readLocal<Sale[]>(SALES_KEY, []);
     }
     try {
@@ -157,6 +170,7 @@ export const store = {
             qty
           )
         `)
+        .eq("tenant_id", tenantId)
         .order("date", { ascending: false });
 
       if (error) throw error;
@@ -168,11 +182,12 @@ export const store = {
   },
 
   addSale: async (sale: Sale) => {
+    const tenantId = await getTenantId();
     // Keep local storage updated
     const localSales = readLocal<Sale[]>(SALES_KEY, []);
     writeLocal(SALES_KEY, [sale, ...localSales]);
 
-    if (!hasSupabase) return;
+    if (!hasSupabase || !tenantId) return;
     try {
       // 1. Insert transaction into sales
       const { error: saleError } = await supabase.from("sales").insert({
@@ -181,6 +196,7 @@ export const store = {
         subtotal: sale.subtotal,
         tax: sale.tax,
         total: sale.total,
+        tenant_id: tenantId,
       });
       if (saleError) throw saleError;
 
@@ -205,17 +221,30 @@ export const store = {
   },
 
   getSettings: async (): Promise<Settings> => {
-    if (!hasSupabase) {
+    const tenantId = await getTenantId();
+    if (!hasSupabase || !tenantId) {
       return readLocal<Settings>(SETTINGS_KEY, defaultSettings);
     }
     try {
       const { data, error } = await supabase
         .from("settings")
         .select("*")
-        .eq("id", 1)
-        .single();
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
 
       if (error) throw error;
+
+      if (!data) {
+        // Create settings row for this tenant if none exists
+        await supabase.from("settings").insert({
+          id: 1,
+          tenant_id: tenantId,
+          shop_name: defaultSettings.shopName,
+          currency: defaultSettings.currency,
+          tax_rate: defaultSettings.taxRate,
+        });
+        return defaultSettings;
+      }
 
       return {
         shopName: data.shop_name,
@@ -231,13 +260,15 @@ export const store = {
   },
 
   setSettings: async (s: Settings) => {
+    const tenantId = await getTenantId();
     // Keep local storage updated
     writeLocal(SETTINGS_KEY, s);
 
-    if (!hasSupabase) return;
+    if (!hasSupabase || !tenantId) return;
     try {
       const { error } = await supabase.from("settings").upsert({
         id: 1,
+        tenant_id: tenantId,
         shop_name: s.shopName,
         currency: s.currency,
         tax_rate: s.taxRate,

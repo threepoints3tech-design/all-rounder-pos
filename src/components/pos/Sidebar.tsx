@@ -1,5 +1,6 @@
-import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, Receipt, ShoppingCart, Settings as SettingsIcon, Package } from "lucide-react";
+import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
+import { Home, Receipt, ShoppingCart, Settings as SettingsIcon, Package, LogOut } from "lucide-react";
+import { auth } from "@/lib/auth";
 
 const items = [
   { to: "/", label: "Home", icon: Home },
@@ -10,8 +11,15 @@ const items = [
 
 export function Sidebar() {
   const { location } = useRouterState();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await auth.logout();
+    navigate({ to: "/login" });
+  };
+
   return (
-    <aside className="flex w-20 shrink-0 flex-col items-center gap-2 rounded-3xl bg-sidebar py-6 text-sidebar-foreground">
+    <aside className="flex w-20 shrink-0 flex-col items-center gap-2 rounded-3xl bg-sidebar py-6 text-sidebar-foreground min-h-[500px]">
       <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-lg font-bold">
         <ShoppingCart className="h-5 w-5" />
       </div>
@@ -33,6 +41,15 @@ export function Sidebar() {
           </Link>
         );
       })}
+      
+      <button
+        onClick={handleLogout}
+        className="mt-auto flex w-14 flex-col items-center gap-1 rounded-2xl px-2 py-3 text-[10px] font-medium text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+        title="Log Out"
+      >
+        <LogOut className="h-5 w-5" />
+        <span>Logout</span>
+      </button>
     </aside>
   );
 }
