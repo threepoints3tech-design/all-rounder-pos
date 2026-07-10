@@ -127,8 +127,8 @@ export const store = {
       writeLocal(pKey, data); // Update cache
       return data as Product[];
     } catch (err) {
-      console.warn("Supabase fetch products failed, falling back to localStorage:", err);
-      return readLocal<Product[]>(pKey, seedProducts);
+      console.warn("Supabase fetch products failed:", err);
+      throw err;
     }
   },
 
@@ -169,6 +169,7 @@ export const store = {
       if (upsertError) throw upsertError;
     } catch (err) {
       console.error("Supabase setProducts failed:", err);
+      throw err;
     }
   },
 
@@ -206,8 +207,8 @@ export const store = {
       writeLocal(sKey, data); // Update cache
       return data as unknown as Sale[];
     } catch (err) {
-      console.warn("Supabase fetch sales failed, falling back to localStorage:", err);
-      return readLocal<Sale[]>(sKey, []);
+      console.warn("Supabase fetch sales failed:", err);
+      throw err;
     }
   },
 
@@ -251,6 +252,7 @@ export const store = {
       if (itemsError) throw itemsError;
     } catch (err) {
       console.error("Supabase addSale failed:", err);
+      throw err;
     }
   },
 
@@ -295,8 +297,8 @@ export const store = {
       writeLocal(setKey, settingsObj); // Update cache
       return settingsObj;
     } catch (err) {
-      console.warn("Supabase fetch settings failed, falling back to localStorage:", err);
-      return readLocal<Settings>(setKey, defaultSettings);
+      console.warn("Supabase fetch settings failed:", err);
+      throw err;
     }
   },
 
@@ -323,6 +325,7 @@ export const store = {
       if (error) throw error;
     } catch (err) {
       console.error("Supabase setSettings failed:", err);
+      throw err;
     }
   },
 };

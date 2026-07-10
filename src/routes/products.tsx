@@ -34,6 +34,7 @@ function ProductsPage() {
   const [editDraft, setEditDraft] = useState<Product | null>(null);
   const [filter, setFilter] = useState<StockFilter>("all");
   const [scanTarget, setScanTarget] = useState<"add" | "edit" | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const fileToDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -44,7 +45,12 @@ function ProductsPage() {
     });
 
   useEffect(() => {
-    store.getProducts().then(setProducts);
+    store.getProducts()
+      .then(setProducts)
+      .catch((err) => {
+        console.error(err);
+        setError(err.message || "ပစ္စည်းများကို database မှ ဆွဲထုတ်၍မရပါ");
+      });
   }, []);
 
   const stats = useMemo(() => {
@@ -70,7 +76,13 @@ function ProductsPage() {
 
   const persist = async (p: Product[]) => {
     setProducts(p);
-    await store.setProducts(p);
+    try {
+      setError(null);
+      await store.setProducts(p);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "ပစ္စည်းများကို database တွင် သိမ်းဆည်း၍မရပါ");
+    }
   };
 
   const add = () => {
@@ -110,6 +122,16 @@ function ProductsPage() {
   return (
     <Shell>
       <h1 className="mb-6 text-2xl font-semibold">Products</h1>
+
+      {error && (
+        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-destructive/20 bg-destructive-soft/10 p-4 text-xs text-destructive">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
+          <div>
+            <p className="font-semibold">စနစ်အမှား ဖြစ်ပွားပါသည် (Database Error):</p>
+            <p className="mt-0.5 opacity-90">{error}</p>
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 space-y-2 rounded-2xl border border-border bg-card p-4">
         <div className="flex flex-wrap items-center gap-2">
