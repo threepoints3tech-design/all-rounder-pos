@@ -192,12 +192,19 @@ create policy "Active tenant members have full access to settings" on public.set
   );
 
 -- 9. Auto-create User Profile Trigger
+-- Reads tenant_id from raw_user_meta_data to link them instantly on signup
 create or replace function public.handle_new_user()
 returns trigger as $$
+declare
+  t_id uuid;
 begin
+  t_id := (new.raw_user_meta_data->>'tenant_id')::uuid;
+
   insert into public.profiles (id, email, role, tenant_id)
-  values (new.id, new.email, 'owner', null)
-  on conflict (id) do nothing;
+  values (new.id, new.email, 'owner', t_id)
+  on conflict (id) do update
+  set tenant_id = excluded.tenant_id;
+  
   return new;
 end;
 $$ language plpgsql security definer;
@@ -207,3 +214,19 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- 10. Auto-create default Settings on Tenant creation
+create or replace function public.handle_new_tenant()
+returns trigger as $$
+begin
+  insert into public.settings (id, tenant_id, shop_name, currency, tax_rate)
+  values (1, new.id, new.name, 'Ks', 5)
+  on conflict (id, tenant_id) do nothing;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_tenant_created on public.tenants;
+create trigger on_tenant_created
+  after insert on public.tenants
+  for each row execute procedure public.handle_new_tenant();

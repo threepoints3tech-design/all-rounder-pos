@@ -78,6 +78,11 @@ function LoginPage() {
       const { data: authData, error: authErr } = await tempClient.auth.signUp({
         email,
         password,
+        options: {
+          data: {
+            tenant_id: tenant.id,
+          },
+        },
       });
 
       if (authErr) {
@@ -87,15 +92,6 @@ function LoginPage() {
 
       const newUserId = authData.user?.id;
       if (!newUserId) throw new Error("အကောင့်ဖန်တီးမှု မအောင်မြင်ပါ");
-
-      // 3. Link profile to tenant using tempClient (which is authenticated as the new user)
-      // This satisfies the profile RLS policy "Users can view and edit own profile"
-      const { error: profileErr } = await tempClient
-        .from("profiles")
-        .update({ tenant_id: tenant.id })
-        .eq("id", newUserId);
-
-      if (profileErr) throw profileErr;
 
       // Note: Default settings row is automatically created by the public.handle_new_tenant database trigger
 

@@ -238,6 +238,11 @@ function AdminPage() {
       const { data: authData, error: authErr } = await tempClient.auth.signUp({
         email: ownerEmail,
         password: ownerPassword,
+        options: {
+          data: {
+            tenant_id: tenant.id,
+          },
+        },
       });
 
       if (authErr) {
@@ -247,22 +252,6 @@ function AdminPage() {
 
       const newUserId = authData.user?.id;
       if (!newUserId) throw new Error("အကောင့်ဖန်တီးမှု မအောင်မြင်ပါ");
-
-      // 3. Update the newly created user's profile with the tenant_id
-      const { error: profileErr } = await supabase
-        .from("profiles")
-        .update({ tenant_id: tenant.id })
-        .eq("id", newUserId);
-
-      if (profileErr) throw profileErr;
-
-      // 4. Initialize default settings row for the new tenant
-      await supabase.from("settings").insert({
-        tenant_id: tenant.id,
-        shop_name: shopName,
-        currency: "Ks",
-        tax_rate: 5,
-      });
 
       setSuccess("ဆိုင်အကောင့်အသစ်ကို အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ ✓");
       setOpenModal(false);
