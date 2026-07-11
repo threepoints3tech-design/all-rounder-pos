@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Search, Minus, Plus, X, Trash2, ScanBarcode, Camera } from "lucide-react";
+import { Search, Minus, Plus, X, Trash2, ScanBarcode, Camera, AlertCircle } from "lucide-react";
 import { Shell } from "@/components/pos/Shell";
 import { BarcodeScanner } from "@/components/pos/BarcodeScanner";
 import {
@@ -28,6 +28,7 @@ function POSPage() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("All");
+  const [error, setError] = useState<string | null>(null);
   const [orderNo, setOrderNo] = useState<number>(1);
   const [now, setNow] = useState<string>("");
   const [scan, setScan] = useState("");
@@ -127,30 +128,45 @@ function POSPage() {
 
   const checkout = async () => {
     if (cart.length === 0) return;
-    const sale = {
-      id: `#${String(orderNo).padStart(4, "0")}`,
-      date: new Date().toISOString(),
-      items: cart,
-      subtotal,
-      tax,
-      total,
-    };
-    await store.addSale(sale);
-    const updated = products.map((p) => {
-      const sold = cart.find((i) => i.id === p.id)?.qty ?? 0;
-      if (!sold) return p;
-      return { ...p, stock: Math.max(0, (p.stock ?? 0) - sold) };
-    });
-    setProducts(updated);
-    await store.setProducts(updated);
-    setCart([]);
-    setOrderNo((n) => n + 1);
+    try {
+      setError(null);
+      const sale = {
+        id: `#${String(orderNo).padStart(4, "0")}`,
+        date: new Date().toISOString(),
+        items: cart,
+        subtotal,
+        tax,
+        total,
+      };
+      await store.addSale(sale);
+      const updated = products.map((p) => {
+        const sold = cart.find((i) => i.id === p.id)?.qty ?? 0;
+        if (!sold) return p;
+        return { ...p, stock: Math.max(0, (p.stock ?? 0) - sold) };
+      });
+      setProducts(updated);
+      await store.setProducts(updated);
+      setCart([]);
+      setOrderNo((n) => n + 1);
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "ငွေရှင်းခြင်း ဆာဗာသို့ ပေးပို့၍မရပါ");
+    }
   };
 
   const fmt = (n: number) => `${settings.currency} ${n.toLocaleString()}`;
 
   return (
     <Shell>
+      {error && (
+        <div className="mb-5 flex items-center gap-3 rounded-2xl border border-destructive/20 bg-destructive-soft/10 p-4 text-xs text-destructive">
+          <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
+          <div>
+            <p className="font-semibold">ငွေရှင်းခြင်း အဆင်မပြေပါ (Checkout Error):</p>
+            <p className="mt-0.5 opacity-90">{error}</p>
+          </div>
+        </div>
+      )}
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
         {/* LEFT */}
         <section className="flex flex-col gap-4">
