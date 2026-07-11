@@ -116,9 +116,7 @@ function LoginPage() {
 
       <div className="relative z-10 w-full max-w-md border border-border bg-card/60 p-8 shadow-[var(--shadow-card)] backdrop-blur-md rounded-3xl">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
-            <ShoppingBag className="h-8 w-8" />
-          </div>
+          <img src="/logo.png" alt="Logo" className="mb-4 h-16 w-16 rounded-2xl object-cover shadow-lg bg-white" />
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             POS System
           </h1>

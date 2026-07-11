@@ -20,9 +20,7 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-20 shrink-0 flex-col items-center gap-2 rounded-3xl bg-sidebar py-6 text-sidebar-foreground min-h-[500px]">
-      <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/10 text-lg font-bold">
-        <ShoppingCart className="h-5 w-5" />
-      </div>
+      <img src="/logo.png" alt="Logo" className="mb-4 h-11 w-11 rounded-2xl object-cover shadow-sm bg-white" />
       {items.map((it) => {
         const active = location.pathname === it.to;
         const Icon = it.icon;
