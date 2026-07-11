@@ -107,6 +107,9 @@ function isSuspended(): boolean {
 }
 
 export const store = {
+  getTenantId: async (): Promise<string | null> => {
+    return getTenantId();
+  },
   getProducts: async (): Promise<Product[]> => {
     if (isSuspended()) {
       throw new Error("Account suspended");

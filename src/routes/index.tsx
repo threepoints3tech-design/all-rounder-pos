@@ -130,8 +130,10 @@ function POSPage() {
     if (cart.length === 0) return;
     try {
       setError(null);
+      const tenantId = await store.getTenantId();
+      const suffix = tenantId ? `-${tenantId.slice(0, 8)}` : "";
       const sale = {
-        id: `#${String(orderNo).padStart(4, "0")}`,
+        id: `#${String(orderNo).padStart(4, "0")}${suffix}`,
         date: new Date().toISOString(),
         items: cart,
         subtotal,

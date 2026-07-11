@@ -109,7 +109,7 @@ function TransactionsPage() {
       startY: afterBest + 4,
       head: [["Order", "Date", "Items", "Total"]],
       body: filtered.map((s) => [
-        s.id,
+        s.id.split("-")[0],
         new Date(s.date).toLocaleString(),
         s.items.map((i) => `${i.name} x${i.qty}`).join(", "),
         `${settings.currency} ${s.total.toLocaleString()}`,
@@ -231,7 +231,7 @@ function TransactionsPage() {
           <div key={s.id} className="rounded-2xl border border-border bg-card p-4">
             <div className="mb-2 flex items-center justify-between">
               <div>
-                <p className="font-semibold">Order {s.id}</p>
+                <p className="font-semibold">Order {s.id.split("-")[0]}</p>
                 <p className="text-xs text-muted-foreground">{new Date(s.date).toLocaleString()}</p>
               </div>
               <p className="text-lg font-bold">{fmt(s.total)}</p>
