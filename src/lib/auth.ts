@@ -1,19 +1,30 @@
 import { supabase } from "./supabase";
 
+type TenantDetails = {
+  name?: string | null;
+  status?: UserProfile["tenant_status"];
+  subscription_ends_at?: string | null;
+};
+
 export interface UserProfile {
   id: string;
   email: string;
   role: "super_admin" | "owner" | "staff";
   tenant_id: string | null;
-  tenant_status?: "active" | "suspended" | "inactive";
+  tenant_status?: "active" | "suspended" | "inactive" | "pending";
   tenant_name?: string;
+  subscription_ends_at?: string | null;
+  active?: boolean;
 }
 
 export const auth = {
   // Get active session
   getSession: async () => {
     if (!supabase) return null;
-    const { data: { session }, error } = await supabase.auth.getSession();
+    const {
+      data: { session },
+      error,
+    } = await supabase.auth.getSession();
     if (error) {
       console.error("Error getting session:", error);
       return null;
@@ -23,58 +34,50 @@ export const auth = {
 
   // Get current user profile and tenant details
   getUserProfile: async (): Promise<UserProfile | null> => {
-    if (!supabase) {
-      // Offline / Local storage fallback mode dummy profile
-      return {
-        id: "offline-user",
-        email: "offline@pos.local",
-        role: "owner",
-        tenant_id: null,
-        tenant_status: "active",
-        tenant_name: "Local Shop",
-      };
-    }
+    if (!supabase) return null;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return null;
 
       // Fetch profile
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select(`
+        .select(
+          `
           id,
           email,
           role,
           tenant_id,
-          tenants (
-            name,
-            status
-          )
-        `)
+          active,
+            tenants (
+              name,
+              status,
+              subscription_ends_at
+            )
+        `,
+        )
         .eq("id", user.id)
         .single();
 
       if (profileError) {
         console.error("Error fetching profile:", profileError);
-        return {
-          id: user.id,
-          email: user.email || "",
-          role: "owner",
-          tenant_id: null,
-          tenant_status: "active",
-        };
+        return null;
       }
 
-      const tenantsData = profile.tenants as any;
+      const tenantsData = profile.tenants as unknown as TenantDetails | null;
 
       return {
         id: profile.id,
         email: profile.email,
-        role: profile.role as any,
+        role: profile.role as UserProfile["role"],
         tenant_id: profile.tenant_id,
         tenant_status: tenantsData?.status || "active",
         tenant_name: tenantsData?.name || "My Shop",
+        subscription_ends_at: tenantsData?.subscription_ends_at ?? null,
+        active: profile.active !== false,
       };
     } catch (err) {
       console.error("Failed to load user profile:", err);
@@ -83,16 +86,21 @@ export const auth = {
   },
 
   // Login
-  login: async (email: string, pinOrPassword: string) => {
+  login: async (
+    email: string,
+    pinOrPassword: string,
+    captchaToken?: string,
+  ) => {
     if (!supabase) {
-      // Local bypass
-      if (pinOrPassword === "1234") return { user: { id: "offline" } };
-      throw new Error("Invalid password");
+      throw new Error(
+        "Supabase configuration မရှိသေးပါ။ .env တွင် production credentials ထည့်ပေးပါ။",
+      );
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password: pinOrPassword,
+      options: captchaToken ? { captchaToken } : undefined,
     });
 
     if (error) throw error;

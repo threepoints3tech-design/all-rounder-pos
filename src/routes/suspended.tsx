@@ -36,16 +36,18 @@ function SuspendedPage() {
         </h1>
 
         <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          သင့်ရဲ့ ဆိုင်အကောင့် သက်တမ်းကုန်ဆုံးသွားခြင်း သို့မဟုတ် သုံးစွဲခွင့်ကို
-          စီမံခန့်ခွဲသူ (Administrator) မှ ခေတ္တပိတ်ထားပါသဖြင့် ဝင်ရောက်၍ မရနိုင်သေးပါ။
+          သင့်ရဲ့ ဆိုင်အကောင့် သက်တမ်းကုန်ဆုံးသွားခြင်း သို့မဟုတ်
+          သုံးစွဲခွင့်ကို စီမံခန့်ခွဲသူ (Administrator) မှ ခေတ္တပိတ်ထားပါသဖြင့်
+          ဝင်ရောက်၍ မရနိုင်သေးပါ။
         </p>
 
         <div className="mt-6 rounded-2xl bg-sidebar/50 p-4 border border-border text-xs leading-relaxed text-muted-foreground text-left">
           <div className="flex items-center gap-2 font-semibold text-foreground mb-1">
             <ShieldAlert className="h-3.5 w-3.5 text-amber-500" />
           </div>
-          သက်တမ်းတိုးမြှင့်ရန် သို့မဟုတ် အသေးစိတ်မေးမြန်းရန်အတွက် စနစ်စီမံခန့်ခွဲသူ
-          (Super Admin) သို့ တိုက်ရိုက်ဆက်သွယ် ဆောင်ရွက်ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။
+          သက်တမ်းတိုးမြှင့်ရန် သို့မဟုတ် အသေးစိတ်မေးမြန်းရန်အတွက်
+          စနစ်စီမံခန့်ခွဲသူ (Super Admin) သို့ တိုက်ရိုက်ဆက်သွယ်
+          ဆောင်ရွက်ပေးပါရန် မေတ္တာရပ်ခံအပ်ပါသည်။
         </div>
 
         <button

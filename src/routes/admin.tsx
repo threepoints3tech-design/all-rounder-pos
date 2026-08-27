@@ -20,12 +20,16 @@ import {
 import { auth, type UserProfile } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { createClient } from "@supabase/supabase-js";
+import { getErrorMessage } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
     meta: [
       { title: "Super Admin Panel – POS" },
-      { name: "description", content: "Manage SaaS tenants and subscriptions." },
+      {
+        name: "description",
+        content: "Manage SaaS tenants and subscriptions.",
+      },
     ],
   }),
   component: AdminPage,
@@ -39,6 +43,14 @@ interface TenantInfo {
   created_at: string;
   owner_email?: string;
   owner_id?: string;
+}
+
+function isSubscriptionExpired(tenant: TenantInfo) {
+  return (
+    tenant.status === "active" &&
+    Boolean(tenant.subscription_ends_at) &&
+    new Date(tenant.subscription_ends_at!).getTime() <= Date.now()
+  );
 }
 
 function AdminPage() {
@@ -79,13 +91,15 @@ function AdminPage() {
       // Fetch tenants
       const { data: tenantData, error: tError } = await supabase
         .from("tenants")
-        .select(`
+        .select(
+          `
           id,
           name,
           status,
           subscription_ends_at,
           created_at
-        `)
+        `,
+        )
         .order("created_at", { ascending: false });
 
       if (tError) throw tError;
@@ -108,9 +122,9 @@ function AdminPage() {
       }) as TenantInfo[];
 
       setTenants(mappedTenants);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || "အချက်အလက်များ ဖတ်၍မရပါ");
+      setError(getErrorMessage(err, "အချက်အလက်များ ဖတ်၍မရပါ"));
     } finally {
       setLoading(false);
     }
@@ -120,9 +134,13 @@ function AdminPage() {
     verifyAndLoadData();
   }, []);
 
-  const handleToggleStatus = async (tenantId: string, currentStatus: string) => {
+  const handleToggleStatus = async (
+    tenantId: string,
+    currentStatus: string,
+  ) => {
     if (!supabase) return;
-    const nextStatus = currentStatus === "active" ? "suspended" : "active";
+    const nextStatus: TenantInfo["status"] =
+      currentStatus === "active" ? "suspended" : "active";
 
     try {
       const { error: err } = await supabase
@@ -133,12 +151,14 @@ function AdminPage() {
       if (err) throw err;
 
       setTenants((prev) =>
-        prev.map((t) => (t.id === tenantId ? { ...t, status: nextStatus as any } : t))
+        prev.map((t) => (t.id === tenantId ? { ...t, status: nextStatus } : t)),
       );
-      setSuccess(`ဆိုင်အကောင့် အခြေအနေကို ${nextStatus === "active" ? "ဖွင့်လှစ်ပြီး" : "ဆိုင်းငံ့ပြီး"} ပါပြီ ✓`);
+      setSuccess(
+        `ဆိုင်အကောင့် အခြေအနေကို ${nextStatus === "active" ? "ဖွင့်လှစ်ပြီး" : "ဆိုင်းငံ့ပြီး"} ပါပြီ ✓`,
+      );
       setTimeout(() => setSuccess(null), 2500);
-    } catch (err: any) {
-      setError(err.message || "ပြင်ဆင်၍မရပါ");
+    } catch (err) {
+      setError(getErrorMessage(err, "ပြင်ဆင်၍မရပါ"));
     }
   };
 
@@ -162,14 +182,20 @@ function AdminPage() {
       setTenants((prev) =>
         prev.map((t) =>
           t.id === tenantId
-            ? { ...t, status: "active", subscription_ends_at: oneMonthExpiry.toISOString() }
-            : t
-        )
+            ? {
+                ...t,
+                status: "active",
+                subscription_ends_at: oneMonthExpiry.toISOString(),
+              }
+            : t,
+        ),
       );
-      setSuccess("ဆိုင်လျှောက်ထားမှုကို အတည်ပြုပြီးပါပြီ (၁ လ သက်တမ်းသတ်မှတ်ခဲ့သည်) ✓");
+      setSuccess(
+        "ဆိုင်လျှောက်ထားမှုကို အတည်ပြုပြီးပါပြီ (၁ လ သက်တမ်းသတ်မှတ်ခဲ့သည်) ✓",
+      );
       setTimeout(() => setSuccess(null), 2500);
-    } catch (err: any) {
-      setError(err.message || "အတည်ပြု၍မရပါ");
+    } catch (err) {
+      setError(getErrorMessage(err, "အတည်ပြု၍မရပါ"));
     }
   };
 
@@ -178,10 +204,12 @@ function AdminPage() {
 
     try {
       const tenant = tenants.find((t) => t.id === tenantId);
-      const currentExpiry = tenant?.subscription_ends_at
+      const recordedExpiry = tenant?.subscription_ends_at
         ? new Date(tenant.subscription_ends_at)
         : new Date();
-      
+      const currentExpiry =
+        recordedExpiry.getTime() > Date.now() ? recordedExpiry : new Date();
+
       const newExpiry = new Date(currentExpiry);
       newExpiry.setMonth(newExpiry.getMonth() + months);
 
@@ -194,13 +222,15 @@ function AdminPage() {
 
       setTenants((prev) =>
         prev.map((t) =>
-          t.id === tenantId ? { ...t, subscription_ends_at: newExpiry.toISOString() } : t
-        )
+          t.id === tenantId
+            ? { ...t, subscription_ends_at: newExpiry.toISOString() }
+            : t,
+        ),
       );
       setSuccess(`ဆိုင်သက်တမ်းကို ${months} လ တိုးမြှင့်ပြီးပါပြီ ✓`);
       setTimeout(() => setSuccess(null), 2500);
-    } catch (err: any) {
-      setError(err.message || "ပြင်ဆင်၍မရပါ");
+    } catch (err) {
+      setError(getErrorMessage(err, "ပြင်ဆင်၍မရပါ"));
     }
   };
 
@@ -260,9 +290,9 @@ function AdminPage() {
       setOwnerPassword("");
       setSubMonths(1);
       verifyAndLoadData();
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err.message || "ဆိုင်ဖန်တီးမှု မအောင်မြင်ပါ");
+      setError(getErrorMessage(err, "ဆိုင်ဖန်တီးမှု မအောင်မြင်ပါ"));
     } finally {
       setSubmitting(false);
     }
@@ -320,7 +350,8 @@ function AdminPage() {
         {/* Controls */}
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-muted-foreground flex items-center gap-2">
-            <Users className="h-4 w-4" /> ဆိုင်အကောင့်များ စာရင်း ({tenants.length})
+            <Users className="h-4 w-4" /> ဆိုင်အကောင့်များ စာရင်း (
+            {tenants.length})
           </h2>
           <button
             onClick={() => setOpenModal(true)}
@@ -341,13 +372,18 @@ function AdminPage() {
                   <th className="p-4 font-semibold">စတင်ဝင်ရောက်သည့်ရက်</th>
                   <th className="p-4 font-semibold">သက်တမ်းကုန်ဆုံးရက်</th>
                   <th className="p-4 font-semibold">အခြေအနေ</th>
-                  <th className="p-4 font-semibold text-right">လုပ်ဆောင်ချက်</th>
+                  <th className="p-4 font-semibold text-right">
+                    လုပ်ဆောင်ချက်
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {tenants.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                    <td
+                      colSpan={6}
+                      className="p-8 text-center text-muted-foreground"
+                    >
                       ဆိုင်အကောင့် မရှိသေးပါ
                     </td>
                   </tr>
@@ -358,17 +394,23 @@ function AdminPage() {
                         <Store className="h-4 w-4 text-primary" />
                         {t.name}
                       </td>
-                      <td className="p-4 text-muted-foreground">{t.owner_email}</td>
+                      <td className="p-4 text-muted-foreground">
+                        {t.owner_email}
+                      </td>
                       <td className="p-4 text-xs text-muted-foreground">
                         {new Date(t.created_at).toLocaleDateString()}
                       </td>
                       <td className="p-4 text-xs font-medium">
                         {t.status === "pending" ? (
-                          <span className="text-amber-500 italic">Pending Approval</span>
+                          <span className="text-amber-500 italic">
+                            Pending Approval
+                          </span>
                         ) : t.subscription_ends_at ? (
                           <span className="flex items-center gap-1">
                             <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                            {new Date(t.subscription_ends_at).toLocaleDateString()}
+                            {new Date(
+                              t.subscription_ends_at,
+                            ).toLocaleDateString()}
                           </span>
                         ) : (
                           "အကန့်အသတ်မရှိ"
@@ -377,18 +419,22 @@ function AdminPage() {
                       <td className="p-4">
                         <span
                           className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                            t.status === "active"
-                              ? "bg-emerald-500/10 text-emerald-500"
-                              : t.status === "pending"
-                              ? "bg-amber-500/10 text-amber-500"
-                              : "bg-destructive/10 text-destructive"
+                            isSubscriptionExpired(t)
+                              ? "bg-destructive/10 text-destructive"
+                              : t.status === "active"
+                                ? "bg-emerald-500/10 text-emerald-500"
+                                : t.status === "pending"
+                                  ? "bg-amber-500/10 text-amber-500"
+                                  : "bg-destructive/10 text-destructive"
                           }`}
                         >
-                          {t.status === "active"
-                            ? "Active"
-                            : t.status === "pending"
-                            ? "Pending"
-                            : "Suspended"}
+                          {isSubscriptionExpired(t)
+                            ? "Expired"
+                            : t.status === "active"
+                              ? "Active"
+                              : t.status === "pending"
+                                ? "Pending"
+                                : "Suspended"}
                         </span>
                       </td>
                       <td className="p-4 text-right">
@@ -398,28 +444,39 @@ function AdminPage() {
                               onClick={() => handleApproveTenant(t.id)}
                               className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-500 px-3.5 text-xs font-bold text-white hover:opacity-90 shadow-md shadow-emerald-500/10"
                             >
-                              <UserCheck className="h-4 w-4" /> အတည်ပြုမည် (Approve)
+                              <UserCheck className="h-4 w-4" /> အတည်ပြုမည်
+                              (Approve)
                             </button>
                           ) : (
                             <>
                               <button
-                                onClick={() => handleToggleStatus(t.id, t.status)}
+                                onClick={() =>
+                                  handleToggleStatus(t.id, t.status)
+                                }
                                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-xs font-semibold hover:bg-accent"
-                                title={t.status === "active" ? "ဆိုင်းငံ့ရန်" : "အသက်သွင်းရန်"}
+                                title={
+                                  t.status === "active"
+                                    ? "ဆိုင်းငံ့ရန်"
+                                    : "အသက်သွင်းရန်"
+                                }
                               >
                                 {t.status === "active" ? (
                                   <>
-                                    <ToggleLeft className="h-4 w-4 text-destructive" /> ဆိုင်းငံ့မည်
+                                    <ToggleLeft className="h-4 w-4 text-destructive" />{" "}
+                                    ဆိုင်းငံ့မည်
                                   </>
                                 ) : (
                                   <>
-                                    <ToggleRight className="h-4 w-4 text-emerald-500" /> ဖွင့်လှစ်မည်
+                                    <ToggleRight className="h-4 w-4 text-emerald-500" />{" "}
+                                    ဖွင့်လှစ်မည်
                                   </>
                                 )}
                               </button>
 
                               <button
-                                onClick={() => handleExtendSubscription(t.id, 1)}
+                                onClick={() =>
+                                  handleExtendSubscription(t.id, 1)
+                                }
                                 className="inline-flex h-8 items-center rounded-lg border border-border px-3 text-xs font-semibold hover:bg-accent"
                               >
                                 +၁ လတိုးရန်
@@ -441,12 +498,15 @@ function AdminPage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
             <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-2xl">
               <h3 className="mb-4 text-base font-bold flex items-center gap-2">
-                <Store className="h-5 w-5 text-primary" /> ဆိုင်အကောင့်အသစ် ဖန်တီးရန်
+                <Store className="h-5 w-5 text-primary" /> ဆိုင်အကောင့်အသစ်
+                ဖန်တီးရန်
               </h3>
 
               <form onSubmit={handleCreateShop} className="space-y-4">
                 <div>
-                  <label className="mb-1 block text-xs font-medium">ဆိုင်အမည် (Shop Name)</label>
+                  <label className="mb-1 block text-xs font-medium">
+                    ဆိုင်အမည် (Shop Name)
+                  </label>
                   <input
                     type="text"
                     required
@@ -458,7 +518,9 @@ function AdminPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs font-medium">အကောင့် Email</label>
+                  <label className="mb-1 block text-xs font-medium">
+                    အကောင့် Email
+                  </label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <input
@@ -473,7 +535,9 @@ function AdminPage() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs font-medium">စကားဝှက် (Password)</label>
+                  <label className="mb-1 block text-xs font-medium">
+                    စကားဝှက် (Password)
+                  </label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <input
@@ -490,13 +554,19 @@ function AdminPage() {
                       onClick={() => setShowModalPassword(!showModalPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     >
-                      {showModalPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showModalPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs font-medium">ကနဦး သက်တမ်းသတ်မှတ်ရန်</label>
+                  <label className="mb-1 block text-xs font-medium">
+                    ကနဦး သက်တမ်းသတ်မှတ်ရန်
+                  </label>
                   <select
                     value={subMonths}
                     onChange={(e) => setSubMonths(Number(e.target.value))}

@@ -11,13 +11,58 @@ export type Product = {
 
 export type CartItem = Product & { qty: number };
 
+export type PaymentMethod =
+  "cash" | "kbzpay" | "wavepay" | "card" | "credit" | "other";
+
 export type Sale = {
   id: string;
+  displayNumber?: number;
   date: string;
   items: CartItem[];
   subtotal: number;
   tax: number;
   total: number;
+  paymentMethod?: PaymentMethod;
+  amountTendered?: number;
+  changeAmount?: number;
+  status?: "completed" | "refunded" | "voided";
+};
+
+export type CheckoutRequest = {
+  items: CartItem[];
+  paymentMethod: PaymentMethod;
+  amountTendered?: number;
+};
+
+type SaleItemRow = {
+  id: string;
+  name: string;
+  price: number | string;
+  category: string;
+  emoji: string;
+  qty: number | string;
+};
+
+type SaleRow = {
+  id: string;
+  display_number: number | null;
+  date: string;
+  subtotal: number | string;
+  tax: number | string;
+  total: number | string;
+  payment_method: PaymentMethod | null;
+  amount_tendered: number | string | null;
+  change_amount: number | string | null;
+  status: Sale["status"];
+  items: SaleItemRow[] | null;
+};
+
+type SettingsRow = {
+  shop_name: string;
+  currency: string;
+  tax_rate: number | string;
+  owner_name: string | null;
+  pin_hash: string | null;
 };
 
 async function getProductsKey(): Promise<string> {
@@ -61,18 +106,102 @@ export const defaultCategories = [
 ];
 
 export const seedProducts: Product[] = [
-  { id: "p1", name: "T-Shirt", price: 8000, category: "Clothing", emoji: "👕", stock: 20 },
-  { id: "p2", name: "Jeans", price: 15000, category: "Clothing", emoji: "👖", stock: 15 },
-  { id: "p3", name: "Bread", price: 1500, category: "Food", emoji: "🍞", stock: 30 },
-  { id: "p4", name: "Cake", price: 5000, category: "Food", emoji: "🎂", stock: 10 },
-  { id: "p5", name: "Coffee", price: 2500, category: "Drinks", emoji: "☕", stock: 50 },
-  { id: "p6", name: "Water", price: 500, category: "Drinks", emoji: "💧", stock: 100 },
-  { id: "p7", name: "Paracetamol", price: 1000, category: "Medicine", emoji: "💊", stock: 40 },
-  { id: "p8", name: "Vitamin C", price: 3000, category: "Medicine", emoji: "🧴", stock: 25 },
-  { id: "p9", name: "Rice 1kg", price: 3500, category: "Grocery", emoji: "🌾", stock: 60 },
-  { id: "p10", name: "Egg (10)", price: 4500, category: "Grocery", emoji: "🥚", stock: 40 },
-  { id: "p11", name: "Milk", price: 2800, category: "Drinks", emoji: "🥛", stock: 30 },
-  { id: "p12", name: "Snack", price: 1200, category: "Food", emoji: "🍪", stock: 45 },
+  {
+    id: "p1",
+    name: "T-Shirt",
+    price: 8000,
+    category: "Clothing",
+    emoji: "👕",
+    stock: 20,
+  },
+  {
+    id: "p2",
+    name: "Jeans",
+    price: 15000,
+    category: "Clothing",
+    emoji: "👖",
+    stock: 15,
+  },
+  {
+    id: "p3",
+    name: "Bread",
+    price: 1500,
+    category: "Food",
+    emoji: "🍞",
+    stock: 30,
+  },
+  {
+    id: "p4",
+    name: "Cake",
+    price: 5000,
+    category: "Food",
+    emoji: "🎂",
+    stock: 10,
+  },
+  {
+    id: "p5",
+    name: "Coffee",
+    price: 2500,
+    category: "Drinks",
+    emoji: "☕",
+    stock: 50,
+  },
+  {
+    id: "p6",
+    name: "Water",
+    price: 500,
+    category: "Drinks",
+    emoji: "💧",
+    stock: 100,
+  },
+  {
+    id: "p7",
+    name: "Paracetamol",
+    price: 1000,
+    category: "Medicine",
+    emoji: "💊",
+    stock: 40,
+  },
+  {
+    id: "p8",
+    name: "Vitamin C",
+    price: 3000,
+    category: "Medicine",
+    emoji: "🧴",
+    stock: 25,
+  },
+  {
+    id: "p9",
+    name: "Rice 1kg",
+    price: 3500,
+    category: "Grocery",
+    emoji: "🌾",
+    stock: 60,
+  },
+  {
+    id: "p10",
+    name: "Egg (10)",
+    price: 4500,
+    category: "Grocery",
+    emoji: "🥚",
+    stock: 40,
+  },
+  {
+    id: "p11",
+    name: "Milk",
+    price: 2800,
+    category: "Drinks",
+    emoji: "🥛",
+    stock: 30,
+  },
+  {
+    id: "p12",
+    name: "Snack",
+    price: 1200,
+    category: "Food",
+    emoji: "🍪",
+    stock: 45,
+  },
 ];
 
 import { supabase } from "./supabase";
@@ -146,29 +275,12 @@ export const store = {
 
     if (!hasSupabase || !tenantId) return;
     try {
-      const ids = products.map((p) => p.id);
-      
-      // 1. Delete products in the DB that belong to this tenant and are not in the new list
-      if (ids.length > 0) {
-        const { error: delError } = await supabase
-          .from("products")
-          .delete()
-          .eq("tenant_id", tenantId)
-          .not("id", "in", `(${ids.join(",")})`);
-        if (delError) throw delError;
-      } else {
-        const { error: delAllError } = await supabase
-          .from("products")
-          .delete()
-          .eq("tenant_id", tenantId);
-        if (delAllError) throw delAllError;
-      }
-
-      // 2. Upsert the current list of products with tenant_id injected (omitting created_at to avoid null value constraint errors)
-      const productsWithTenant = products.map((p: any) => {
-        const { created_at, ...rest } = p;
-        return { ...rest, tenant_id: tenantId };
-      });
+      // Catalogue changes are upserts only. Removing absent rows here would let a
+      // stale browser erase products (or sold-product history) from another user.
+      const productsWithTenant = products.map((product) => ({
+        ...product,
+        tenant_id: tenantId,
+      }));
       const { error: upsertError } = await supabase
         .from("products")
         .upsert(productsWithTenant);
@@ -177,6 +289,47 @@ export const store = {
       console.error("Supabase setProducts failed:", err);
       throw err;
     }
+  },
+
+  saveProduct: async (product: Product) => {
+    if (isSuspended()) throw new Error("Account suspended");
+    const pKey = await getProductsKey();
+    const tenantId = await getTenantId();
+    const existing = readLocal<Product[]>(pKey, seedProducts);
+    const nextProducts = existing.some((item) => item.id === product.id)
+      ? existing.map((item) => (item.id === product.id ? product : item))
+      : [...existing, product];
+
+    if (!hasSupabase || !tenantId) {
+      writeLocal(pKey, nextProducts);
+      return product;
+    }
+    const { error } = await supabase
+      .from("products")
+      .upsert({ ...product, tenant_id: tenantId });
+    if (error) throw error;
+    writeLocal(pKey, nextProducts);
+    return product;
+  },
+
+  deleteProduct: async (productId: string) => {
+    if (isSuspended()) throw new Error("Account suspended");
+    const pKey = await getProductsKey();
+    const tenantId = await getTenantId();
+    if (hasSupabase && tenantId) {
+      const { error } = await supabase
+        .from("products")
+        .delete()
+        .eq("id", productId)
+        .eq("tenant_id", tenantId);
+      if (error) throw error;
+    }
+    writeLocal(
+      pKey,
+      readLocal<Product[]>(pKey, seedProducts).filter(
+        (product) => product.id !== productId,
+      ),
+    );
   },
 
   getSales: async (): Promise<Sale[]> => {
@@ -191,12 +344,18 @@ export const store = {
     try {
       const { data, error } = await supabase
         .from("sales")
-        .select(`
+        .select(
+          `
           id,
+          display_number,
           date,
           subtotal,
           tax,
           total,
+          payment_method,
+          amount_tendered,
+          change_amount,
+          status,
           items:sale_items(
             id:product_id,
             name,
@@ -205,61 +364,188 @@ export const store = {
             emoji,
             qty
           )
-        `)
+        `,
+        )
         .eq("tenant_id", tenantId)
         .order("date", { ascending: false });
 
       if (error) throw error;
-      writeLocal(sKey, data); // Update cache
-      return data as unknown as Sale[];
+      const sales = ((data ?? []) as unknown as SaleRow[]).map((sale) => ({
+        id: sale.id,
+        displayNumber: sale.display_number ?? undefined,
+        date: sale.date,
+        subtotal: Number(sale.subtotal),
+        tax: Number(sale.tax),
+        total: Number(sale.total),
+        paymentMethod: sale.payment_method as PaymentMethod | undefined,
+        amountTendered:
+          sale.amount_tendered == null
+            ? undefined
+            : Number(sale.amount_tendered),
+        changeAmount:
+          sale.change_amount == null ? undefined : Number(sale.change_amount),
+        status: sale.status as Sale["status"],
+        items: (sale.items ?? []).map((item) => ({
+          ...item,
+          price: Number(item.price),
+          qty: Number(item.qty),
+        })),
+      })) as Sale[];
+      writeLocal(sKey, sales); // Update cache
+      return sales;
     } catch (err) {
       console.warn("Supabase fetch sales failed:", err);
       throw err;
     }
   },
 
-  addSale: async (sale: Sale) => {
+  completeSale: async ({
+    items,
+    paymentMethod,
+    amountTendered,
+  }: CheckoutRequest): Promise<Sale> => {
     if (isSuspended()) {
       throw new Error("Account suspended");
     }
     const sKey = await getSalesKey();
     const tenantId = await getTenantId();
-    // Keep local storage updated
-    const localSales = readLocal<Sale[]>(sKey, []);
-    writeLocal(sKey, [sale, ...localSales]);
+    if (items.length === 0) throw new Error("Cart is empty");
 
-    if (!hasSupabase || !tenantId) return;
+    if (!hasSupabase || !tenantId) {
+      const localSales = readLocal<Sale[]>(sKey, []);
+      const pKey = await getProductsKey();
+      const localProducts = readLocal<Product[]>(pKey, seedProducts);
+      const subtotal = items.reduce(
+        (sum, item) => sum + item.price * item.qty,
+        0,
+      );
+      const settings = await store.getSettings();
+      const tax = Math.round((subtotal * settings.taxRate) / 100);
+      const total = subtotal + tax;
+      const tendered =
+        paymentMethod === "cash" ? (amountTendered ?? total) : total;
+      if (paymentMethod === "cash" && tendered < total) {
+        throw new Error("Cash received is less than the total");
+      }
+      for (const item of items) {
+        const product = localProducts.find(
+          (candidate) => candidate.id === item.id,
+        );
+        if (!product || (product.stock ?? 0) < item.qty) {
+          throw new Error(`Insufficient stock for ${item.name}`);
+        }
+      }
+      const sale: Sale = {
+        id: `#${String(localSales.length + 1).padStart(6, "0")}-local-${crypto.randomUUID()}`,
+        displayNumber: localSales.length + 1,
+        date: new Date().toISOString(),
+        items,
+        subtotal,
+        tax,
+        total,
+        paymentMethod,
+        amountTendered: tendered,
+        changeAmount: paymentMethod === "cash" ? tendered - total : 0,
+        status: "completed",
+      };
+      writeLocal(
+        pKey,
+        localProducts.map((product) => {
+          const item = items.find((candidate) => candidate.id === product.id);
+          return item
+            ? { ...product, stock: (product.stock ?? 0) - item.qty }
+            : product;
+        }),
+      );
+      writeLocal(sKey, [sale, ...localSales]);
+      return sale;
+    }
+
     try {
-      // 1. Insert transaction into sales
-      const { error: saleError } = await supabase.from("sales").insert({
-        id: sale.id,
-        date: sale.date,
-        subtotal: sale.subtotal,
-        tax: sale.tax,
-        total: sale.total,
-        tenant_id: tenantId,
+      const { data, error } = await supabase.rpc("complete_sale", {
+        sale_items_input: items.map((item) => ({ id: item.id, qty: item.qty })),
+        requested_payment_method: paymentMethod,
+        requested_amount_tendered: amountTendered ?? null,
       });
-      if (saleError) throw saleError;
+      if (error) throw error;
 
-      // 2. Insert items
-      const itemsToInsert = sale.items.map((item) => ({
-        sale_id: sale.id,
-        product_id: item.id,
-        name: item.name,
-        price: item.price,
-        qty: item.qty,
-        emoji: item.emoji,
-        category: item.category,
-      }));
-
-      const { error: itemsError } = await supabase
-        .from("sale_items")
-        .insert(itemsToInsert);
-      if (itemsError) throw itemsError;
+      const sale = data as Sale;
+      const localSales = readLocal<Sale[]>(sKey, []);
+      writeLocal(sKey, [sale, ...localSales]);
+      return sale;
     } catch (err) {
-      console.error("Supabase addSale failed:", err);
+      console.error("Supabase completeSale failed:", err);
       throw err;
     }
+  },
+
+  refundSale: async (saleId: string) => {
+    if (isSuspended()) throw new Error("Account suspended");
+    const sKey = await getSalesKey();
+    const tenantId = await getTenantId();
+    if (!hasSupabase || !tenantId) {
+      const localSales = readLocal<Sale[]>(sKey, []);
+      const pKey = await getProductsKey();
+      const target = localSales.find((sale) => sale.id === saleId);
+      if (!target || target.status === "refunded")
+        throw new Error("Sale cannot be refunded");
+      const updated = localSales.map((sale) =>
+        sale.id === saleId ? { ...sale, status: "refunded" as const } : sale,
+      );
+      writeLocal(
+        pKey,
+        readLocal<Product[]>(pKey, seedProducts).map((product) => {
+          const item = target.items.find(
+            (candidate) => candidate.id === product.id,
+          );
+          return item
+            ? { ...product, stock: (product.stock ?? 0) + item.qty }
+            : product;
+        }),
+      );
+      writeLocal(sKey, updated);
+      return updated.find((sale) => sale.id === saleId)!;
+    }
+    const { data, error } = await supabase.rpc("refund_sale", {
+      target_sale_id: saleId,
+    });
+    if (error) throw error;
+    const localSales = readLocal<Sale[]>(sKey, []);
+    writeLocal(
+      sKey,
+      localSales.map((sale) =>
+        sale.id === saleId ? { ...sale, status: "refunded" } : sale,
+      ),
+    );
+    return data;
+  },
+
+  adjustProductStock: async (
+    productId: string,
+    quantityDelta: number,
+    note?: string,
+  ) => {
+    if (isSuspended()) throw new Error("Account suspended");
+    const pKey = await getProductsKey();
+    const tenantId = await getTenantId();
+    if (!hasSupabase || !tenantId) {
+      const products = readLocal<Product[]>(pKey, seedProducts).map(
+        (product) => {
+          if (product.id !== productId) return product;
+          const nextStock = Math.max(0, (product.stock ?? 0) + quantityDelta);
+          return { ...product, stock: nextStock };
+        },
+      );
+      writeLocal(pKey, products);
+      return products.find((product) => product.id === productId)?.stock;
+    }
+    const { data, error } = await supabase.rpc("adjust_product_stock", {
+      target_product_id: productId,
+      quantity_delta: quantityDelta,
+      adjustment_note: note ?? null,
+    });
+    if (error) throw error;
+    return Number(data);
   },
 
   getSettings: async (): Promise<Settings> => {
@@ -272,33 +558,24 @@ export const store = {
       return readLocal<Settings>(setKey, defaultSettings);
     }
     try {
-      const { data, error } = await supabase
-        .from("settings")
-        .select("*")
-        .eq("tenant_id", tenantId)
-        .maybeSingle();
+      const { data, error } = await supabase.rpc("get_pos_settings");
 
       if (error) throw error;
+      const settingsData = (data ?? [])[0] as unknown as
+        SettingsRow | undefined;
 
-      if (!data) {
-        // Create settings row for this tenant if none exists
-        await supabase.from("settings").insert({
-          id: 1,
-          tenant_id: tenantId,
-          shop_name: defaultSettings.shopName,
-          currency: defaultSettings.currency,
-          tax_rate: defaultSettings.taxRate,
-        });
-        writeLocal(setKey, defaultSettings);
-        return defaultSettings;
+      if (!settingsData) {
+        throw new Error(
+          "Shop settings မတွေ့ပါ။ Database migration ကို run ပြီးကြောင်း စစ်ပေးပါ။",
+        );
       }
 
       const settingsObj = {
-        shopName: data.shop_name,
-        currency: data.currency,
-        taxRate: Number(data.tax_rate),
-        ownerName: data.owner_name,
-        pinHash: data.pin_hash,
+        shopName: settingsData.shop_name,
+        currency: settingsData.currency,
+        taxRate: Number(settingsData.tax_rate),
+        ownerName: settingsData.owner_name ?? "",
+        pinHash: settingsData.pin_hash ?? "",
       };
       writeLocal(setKey, settingsObj); // Update cache
       return settingsObj;
@@ -356,5 +633,3 @@ export const lock = {
     else window.sessionStorage.removeItem(UNLOCK_KEY);
   },
 };
-
-

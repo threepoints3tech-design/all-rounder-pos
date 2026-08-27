@@ -18,7 +18,9 @@ function NotFoundComponent() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
         <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
+        <h2 className="mt-4 text-xl font-semibold text-foreground">
+          Page not found
+        </h2>
         <p className="mt-2 text-sm text-muted-foreground">
           The page you're looking for doesn't exist or has been moved.
         </p>
@@ -49,7 +51,8 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
           This page didn't load
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Something went wrong on our end. You can try refreshing or head back home.
+          Something went wrong on our end. You can try refreshing or head back
+          home.
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
@@ -75,97 +78,127 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 
 import { auth } from "../lib/auth";
 
-export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  beforeLoad: async ({ location }) => {
-    if (typeof window === "undefined") return;
-    const pathname = location.pathname;
+export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
+  {
+    beforeLoad: async ({ location }) => {
+      if (typeof window === "undefined") return;
+      const pathname = location.pathname;
 
-    // Allow access to login and suspended pages without auth
-    if (pathname === "/login" || pathname === "/suspended") {
-      return;
-    }
-
-    const session = await auth.getSession();
-    if (!session) {
-      throw redirect({
-        to: "/login",
-      });
-    }
-
-    const profile = await auth.getUserProfile();
-    if (!profile) {
-      throw redirect({
-        to: "/login",
-      });
-    }
-
-    // Check if the tenant/shop status is active
-    const isTenantInactive = profile.tenant_status === "suspended" || 
-                             profile.tenant_status === "inactive" || 
-                             profile.tenant_status === "pending";
-
-    if (isTenantInactive) {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("pos.suspended", "true");
+      // Allow access to login and suspended pages without auth
+      if (
+        pathname === "/login" ||
+        pathname === "/reset-password" ||
+        pathname === "/suspended"
+      ) {
+        return;
       }
-      throw redirect({
-        to: "/suspended",
-      });
-    } else {
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("pos.suspended");
+
+      const session = await auth.getSession();
+      if (!session) {
+        throw redirect({
+          to: "/login",
+        });
       }
-    }
 
-    // If super_admin, force redirection to /admin (unless already there)
-    if (profile.role === "super_admin" && pathname !== "/admin") {
-      throw redirect({
-        to: "/admin",
-      });
-    }
+      const profile = await auth.getUserProfile();
+      if (!profile) {
+        throw redirect({
+          to: "/login",
+        });
+      }
 
-    // Standard user should not access the /admin panel
-    if (profile.role !== "super_admin" && pathname === "/admin") {
-      throw redirect({
-        to: "/",
-      });
-    }
+      // Check if the tenant/shop status is active
+      const isSubscriptionExpired = Boolean(
+        profile.subscription_ends_at &&
+        new Date(profile.subscription_ends_at).getTime() <= Date.now(),
+      );
+      const isTenantInactive =
+        profile.active === false ||
+        profile.tenant_status === "suspended" ||
+        profile.tenant_status === "inactive" ||
+        profile.tenant_status === "pending" ||
+        isSubscriptionExpired;
 
-    return {
-      profile,
-    };
+      if (isTenantInactive) {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("pos.suspended", "true");
+        }
+        throw redirect({
+          to: "/suspended",
+        });
+      } else {
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("pos.suspended");
+        }
+      }
+
+      // If super_admin, force redirection to /admin (unless already there)
+      if (profile.role === "super_admin" && pathname !== "/admin") {
+        throw redirect({
+          to: "/admin",
+        });
+      }
+
+      // Standard user should not access the /admin panel
+      if (profile.role !== "super_admin" && pathname === "/admin") {
+        throw redirect({
+          to: "/",
+        });
+      }
+
+      return {
+        profile,
+      };
+    },
+    head: () => ({
+      meta: [
+        { charSet: "utf-8" },
+        { name: "viewport", content: "width=device-width, initial-scale=1" },
+        { title: "POS – General Point of Sale" },
+        {
+          name: "description",
+          content: "Simple general-purpose POS for any shop.",
+        },
+        { name: "author", content: "Lovable" },
+        { property: "og:title", content: "POS – General Point of Sale" },
+        {
+          property: "og:description",
+          content: "Simple general-purpose POS for any shop.",
+        },
+        { property: "og:type", content: "website" },
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: "POS – General Point of Sale" },
+        {
+          name: "twitter:description",
+          content: "Simple general-purpose POS for any shop.",
+        },
+        {
+          property: "og:image",
+          content:
+            "https://storage.googleapis.com/gpt-engineer-file-uploads/LActwpR8i3d7khKYEZ3rCmcn3192/social-images/social-1783437635546-MEITU_20260604_151710748.webp",
+        },
+        {
+          name: "twitter:image",
+          content:
+            "https://storage.googleapis.com/gpt-engineer-file-uploads/LActwpR8i3d7khKYEZ3rCmcn3192/social-images/social-1783437635546-MEITU_20260604_151710748.webp",
+        },
+      ],
+      links: [
+        {
+          rel: "stylesheet",
+          href: appCss,
+        },
+        { rel: "icon", href: "/logo.png?v=2", type: "image/png" },
+        { rel: "apple-touch-icon", href: "/logo.png?v=2" },
+        { rel: "icon", href: "/favicon.ico?v=2", type: "image/x-icon" },
+      ],
+    }),
+    shellComponent: RootShell,
+    component: RootComponent,
+    notFoundComponent: NotFoundComponent,
+    errorComponent: ErrorComponent,
   },
-  head: () => ({
-    meta: [
-      { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "POS – General Point of Sale" },
-      { name: "description", content: "Simple general-purpose POS for any shop." },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "POS – General Point of Sale" },
-      { property: "og:description", content: "Simple general-purpose POS for any shop." },
-      { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:title", content: "POS – General Point of Sale" },
-      { name: "twitter:description", content: "Simple general-purpose POS for any shop." },
-      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/LActwpR8i3d7khKYEZ3rCmcn3192/social-images/social-1783437635546-MEITU_20260604_151710748.webp" },
-      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/LActwpR8i3d7khKYEZ3rCmcn3192/social-images/social-1783437635546-MEITU_20260604_151710748.webp" },
-    ],
-    links: [
-      {
-        rel: "stylesheet",
-        href: appCss,
-      },
-      { rel: "icon", href: "/logo.png?v=2", type: "image/png" },
-      { rel: "apple-touch-icon", href: "/logo.png?v=2" },
-      { rel: "icon", href: "/favicon.ico?v=2", type: "image/x-icon" },
-    ],
-  }),
-  shellComponent: RootShell,
-  component: RootComponent,
-  notFoundComponent: NotFoundComponent,
-  errorComponent: ErrorComponent,
-});
+);
 
 function RootShell({ children }: { children: ReactNode }) {
   return (

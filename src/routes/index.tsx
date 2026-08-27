@@ -1,6 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Search, Minus, Plus, X, Trash2, ScanBarcode, Camera, AlertCircle } from "lucide-react";
+import {
+  Search,
+  Minus,
+  Plus,
+  X,
+  Trash2,
+  ScanBarcode,
+  Camera,
+  AlertCircle,
+  Printer,
+} from "lucide-react";
 import { Shell } from "@/components/pos/Shell";
 import { BarcodeScanner } from "@/components/pos/BarcodeScanner";
 import {
@@ -9,14 +19,21 @@ import {
   type Product,
   type CartItem,
   type Settings,
+  type PaymentMethod,
+  type Sale,
   defaultSettings,
 } from "@/lib/pos-store";
+import { printReceipt } from "@/lib/receipt";
+import { getErrorMessage } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "POS – General Point of Sale" },
-      { name: "description", content: "Simple general-purpose POS for any shop." },
+      {
+        name: "description",
+        content: "Simple general-purpose POS for any shop.",
+      },
     ],
   }),
   component: POSPage,
@@ -32,8 +49,13 @@ function POSPage() {
   const [orderNo, setOrderNo] = useState<number>(1);
   const [now, setNow] = useState<string>("");
   const [scan, setScan] = useState("");
-  const [scanMsg, setScanMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [scanMsg, setScanMsg] = useState<{ text: string; ok: boolean } | null>(
+    null,
+  );
   const [camOpen, setCamOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  const [amountTendered, setAmountTendered] = useState("");
+  const [lastSale, setLastSale] = useState<Sale | null>(null);
 
   useEffect(() => {
     store.getProducts().then(setProducts);
@@ -65,7 +87,10 @@ function POSPage() {
     return products.filter((p) => {
       const inCat = category === "All" || p.category === category;
       const q = query.trim().toLowerCase();
-      const match = !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q);
+      const match =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q);
       return inCat && match;
     });
   }, [products, category, query]);
@@ -96,13 +121,16 @@ function POSPage() {
     );
   };
 
-  const removeItem = (id: string) => setCart((c) => c.filter((i) => i.id !== id));
+  const removeItem = (id: string) =>
+    setCart((c) => c.filter((i) => i.id !== id));
 
   const lookupAndAdd = (rawCode: string) => {
     const code = rawCode.trim();
     if (!code) return;
     const found = products.find(
-      (p) => (p.barcode ?? "").trim().toLowerCase() === code.toLowerCase() || p.id === code,
+      (p) =>
+        (p.barcode ?? "").trim().toLowerCase() === code.toLowerCase() ||
+        p.id === code,
     );
     if (!found) {
       setScanMsg({ text: `Barcode "${code}" ကို ရှာမတွေ့ပါ`, ok: false });
@@ -125,34 +153,30 @@ function POSPage() {
   const subtotal = cart.reduce((s, i) => s + i.price * i.qty, 0);
   const tax = Math.round((subtotal * settings.taxRate) / 100);
   const total = subtotal + tax;
+  const tendered = Number(amountTendered || total);
+  const estimatedChange =
+    paymentMethod === "cash" && tendered >= total ? tendered - total : 0;
 
   const checkout = async () => {
     if (cart.length === 0) return;
     try {
       setError(null);
-      const tenantId = await store.getTenantId();
-      const suffix = tenantId ? `-${tenantId.slice(0, 8)}` : "";
-      const sale = {
-        id: `#${String(orderNo).padStart(4, "0")}${suffix}`,
-        date: new Date().toISOString(),
+      if (paymentMethod === "cash" && tendered < total) {
+        throw new Error("လက်ခံငွေက စုစုပေါင်းကျသင့်ငွေထက် နည်းနေပါသည်");
+      }
+      const sale = await store.completeSale({
         items: cart,
-        subtotal,
-        tax,
-        total,
-      };
-      await store.addSale(sale);
-      const updated = products.map((p) => {
-        const sold = cart.find((i) => i.id === p.id)?.qty ?? 0;
-        if (!sold) return p;
-        return { ...p, stock: Math.max(0, (p.stock ?? 0) - sold) };
+        paymentMethod,
+        amountTendered: paymentMethod === "cash" ? tendered : undefined,
       });
-      setProducts(updated);
-      await store.setProducts(updated);
+      setProducts(await store.getProducts());
       setCart([]);
-      setOrderNo((n) => n + 1);
-    } catch (err: any) {
+      setAmountTendered("");
+      setLastSale(sale);
+      setOrderNo((sale.displayNumber ?? orderNo) + 1);
+    } catch (err) {
       console.error(err);
-      setError(err.message || "ငွေရှင်းခြင်း ဆာဗာသို့ ပေးပို့၍မရပါ");
+      setError(getErrorMessage(err, "ငွေရှင်းခြင်း ဆာဗာသို့ ပေးပို့၍မရပါ"));
     }
   };
 
@@ -164,9 +188,30 @@ function POSPage() {
         <div className="mb-5 flex items-center gap-3 rounded-2xl border border-destructive/20 bg-destructive-soft/10 p-4 text-xs text-destructive">
           <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
           <div>
-            <p className="font-semibold">ငွေရှင်းခြင်း အဆင်မပြေပါ (Checkout Error):</p>
+            <p className="font-semibold">
+              ငွေရှင်းခြင်း အဆင်မပြေပါ (Checkout Error):
+            </p>
             <p className="mt-0.5 opacity-90">{error}</p>
           </div>
+        </div>
+      )}
+      {lastSale && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4 text-sm text-emerald-700 dark:text-emerald-300">
+          <div>
+            <p className="font-semibold">ငွေရှင်းပြီးပါပြီ ✓</p>
+            <p className="mt-0.5 text-xs">
+              Order{" "}
+              {lastSale.displayNumber
+                ? `#${String(lastSale.displayNumber).padStart(6, "0")}`
+                : lastSale.id.split("-")[0]}
+            </p>
+          </div>
+          <button
+            onClick={() => printReceipt(lastSale, settings)}
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+          >
+            <Printer className="h-4 w-4" /> Receipt ပရင့်ထုတ်ရန်
+          </button>
         </div>
       )}
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
@@ -177,7 +222,9 @@ function POSPage() {
               <h1 className="text-2xl font-semibold text-foreground">
                 Order No. #{String(orderNo).padStart(4, "0")}
               </h1>
-              <p className="text-xs text-muted-foreground">{settings.shopName}</p>
+              <p className="text-xs text-muted-foreground">
+                {settings.shopName}
+              </p>
             </div>
             <p className="text-sm text-muted-foreground">{now}</p>
           </div>
@@ -246,15 +293,25 @@ function POSPage() {
                 >
                   <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-primary-soft text-4xl">
                     {p.image ? (
-                      <img src={p.image} alt={p.name} className="h-full w-full object-cover" />
+                      <img
+                        src={p.image}
+                        alt={p.name}
+                        className="h-full w-full object-cover"
+                      />
                     ) : (
                       p.emoji
                     )}
                   </div>
                   <div className="w-full">
-                    <p className="truncate text-sm font-medium text-foreground">{p.name}</p>
-                    <p className="text-xs text-muted-foreground">{fmt(p.price)}</p>
-                    <p className={`mt-0.5 text-[11px] font-medium ${isOut ? "text-destructive" : stock <= 5 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {p.name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {fmt(p.price)}
+                    </p>
+                    <p
+                      className={`mt-0.5 text-[11px] font-medium ${isOut ? "text-destructive" : stock <= 5 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}
+                    >
                       {isOut ? "ကုန်သွားပြီ" : `${stock} ကျန်`}
                     </p>
                   </div>
@@ -301,22 +358,35 @@ function POSPage() {
             </button>
           </div>
 
-          <div className="flex-1 space-y-3 overflow-y-auto pr-1" style={{ maxHeight: 380 }}>
+          <div
+            className="flex-1 space-y-3 overflow-y-auto pr-1"
+            style={{ maxHeight: 380 }}
+          >
             {cart.length === 0 && (
-              <p className="py-10 text-center text-sm text-muted-foreground">Cart is empty.</p>
+              <p className="py-10 text-center text-sm text-muted-foreground">
+                Cart is empty.
+              </p>
             )}
             {cart.map((i) => (
               <div key={i.id} className="flex items-center gap-3">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary-soft text-2xl">
                   {i.image ? (
-                    <img src={i.image} alt={i.name} className="h-full w-full object-cover" />
+                    <img
+                      src={i.image}
+                      alt={i.name}
+                      className="h-full w-full object-cover"
+                    />
                   ) : (
                     i.emoji
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-foreground">{i.name}</p>
-                  <p className="text-xs text-muted-foreground">{fmt(i.price)}</p>
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {i.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {fmt(i.price)}
+                  </p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
@@ -325,7 +395,9 @@ function POSPage() {
                   >
                     <Minus className="h-3 w-3" />
                   </button>
-                  <span className="w-5 text-center text-sm font-medium">{i.qty}</span>
+                  <span className="w-5 text-center text-sm font-medium">
+                    {i.qty}
+                  </span>
                   <button
                     onClick={() => changeQty(i.id, 1)}
                     className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90"
@@ -347,7 +419,9 @@ function POSPage() {
           <div className="space-y-2 border-t border-border pt-3 text-sm">
             <div className="flex justify-between text-muted-foreground">
               <span>Sub Total</span>
-              <span className="font-medium text-foreground">{fmt(subtotal)}</span>
+              <span className="font-medium text-foreground">
+                {fmt(subtotal)}
+              </span>
             </div>
             <div className="flex justify-between text-muted-foreground">
               <span>Tax ({settings.taxRate}%)</span>
@@ -358,11 +432,51 @@ function POSPage() {
           <div className="rounded-2xl bg-primary-soft p-4">
             <div className="mb-3 flex items-center justify-between">
               <span className="text-sm font-medium text-foreground">Total</span>
-              <span className="text-2xl font-bold text-foreground">{fmt(total)}</span>
+              <span className="text-2xl font-bold text-foreground">
+                {fmt(total)}
+              </span>
             </div>
+            <label className="mb-2 block text-xs font-medium text-foreground">
+              ငွေပေးချေမှုနည်းလမ်း
+              <select
+                value={paymentMethod}
+                onChange={(e) => {
+                  setPaymentMethod(e.target.value as PaymentMethod);
+                  if (e.target.value !== "cash") setAmountTendered("");
+                }}
+                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
+              >
+                <option value="cash">Cash</option>
+                <option value="kbzpay">KBZPay</option>
+                <option value="wavepay">Wave Pay</option>
+                <option value="card">Card</option>
+                <option value="credit">Credit</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            {paymentMethod === "cash" && (
+              <label className="mb-3 block text-xs font-medium text-foreground">
+                လက်ခံငွေ
+                <input
+                  type="number"
+                  min={total}
+                  inputMode="decimal"
+                  value={amountTendered}
+                  onChange={(e) => setAmountTendered(e.target.value)}
+                  placeholder={String(total)}
+                  className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground"
+                />
+                <span className="mt-1 block text-right text-xs text-muted-foreground">
+                  ပြန်အမ်းငွေ: {fmt(estimatedChange)}
+                </span>
+              </label>
+            )}
             <button
               onClick={checkout}
-              disabled={cart.length === 0}
+              disabled={
+                cart.length === 0 ||
+                (paymentMethod === "cash" && tendered < total)
+              }
               className="w-full rounded-xl bg-primary py-3 text-sm font-semibold uppercase tracking-wide text-primary-foreground shadow-[var(--shadow-soft)] transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Check Out
@@ -371,7 +485,7 @@ function POSPage() {
               onClick={() => setCart([])}
               className="mt-2 w-full rounded-xl py-2 text-sm font-semibold uppercase tracking-wide text-primary hover:bg-white/50"
             >
-              Pending
+              Cart ရှင်းမည်
             </button>
           </div>
         </aside>

@@ -8,14 +8,19 @@ const isValidUrl = (url: string): boolean => {
 };
 
 const isValidKey = (key: string): boolean => {
-  return key.length > 0 && !key.includes("your-") && !key.includes("placeholder") && !key.includes("anon-public-key");
+  return (
+    key.length > 0 &&
+    !key.includes("your-") &&
+    !key.includes("placeholder") &&
+    !key.includes("anon-public-key")
+  );
 };
 
 const isConfigured = isValidUrl(supabaseUrl) && isValidKey(supabaseAnonKey);
 
 if (!isConfigured) {
   console.warn(
-    "Supabase credentials missing or invalid. Falling back to local storage mode."
+    "Supabase credentials missing or invalid. Falling back to local storage mode.",
   );
 }
 
@@ -23,3 +28,11 @@ export const supabase = isConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
+// Use this only for flows that must not replace the currently signed-in user's
+// session, such as a public shop application.
+export const createTemporaryAuthClient = () =>
+  isConfigured
+    ? createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false },
+      })
+    : null;

@@ -1,10 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, Printer, RotateCcw } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { Shell } from "@/components/pos/Shell";
-import { store, type Sale, type Settings, defaultSettings } from "@/lib/pos-store";
+import {
+  store,
+  type Sale,
+  type Settings,
+  defaultSettings,
+} from "@/lib/pos-store";
+import { printReceipt } from "@/lib/receipt";
+import { auth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/utils";
 
 export const Route = createFileRoute("/transactions")({
   head: () => ({
@@ -22,6 +30,8 @@ function TransactionsPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [period, setPeriod] = useState<Period>("day");
+  const [error, setError] = useState<string | null>(null);
+  const [canRefund, setCanRefund] = useState(false);
   const [dateStr, setDateStr] = useState<string>(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -30,6 +40,9 @@ function TransactionsPage() {
   useEffect(() => {
     store.getSales().then(setSales);
     store.getSettings().then(setSettings);
+    void auth.getUserProfile().then((profile) => {
+      setCanRefund(profile?.role === "owner");
+    });
   }, []);
 
   const fmt = (n: number) => `${settings.currency} ${n.toLocaleString()}`;
@@ -41,8 +54,17 @@ function TransactionsPage() {
 
   const periodLabel = useMemo(() => {
     const dt = new Date(selected.y, selected.m, selected.d);
-    if (period === "day") return dt.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
-    if (period === "month") return dt.toLocaleDateString(undefined, { year: "numeric", month: "long" });
+    if (period === "day")
+      return dt.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+    if (period === "month")
+      return dt.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "long",
+      });
     return String(selected.y);
   }, [period, selected]);
 
@@ -58,21 +80,37 @@ function TransactionsPage() {
   }, [sales, selected, period]);
 
   const stats = useMemo(() => {
-    const revenue = filtered.reduce((s, x) => s + x.total, 0);
-    const items = filtered.reduce((s, x) => s + x.items.reduce((a, i) => a + i.qty, 0), 0);
-    return { revenue, items, orders: filtered.length };
+    const completed = filtered.filter(
+      (sale) => sale.status !== "refunded" && sale.status !== "voided",
+    );
+    const revenue = completed.reduce((s, x) => s + x.total, 0);
+    const items = completed.reduce(
+      (s, x) => s + x.items.reduce((a, i) => a + i.qty, 0),
+      0,
+    );
+    return { revenue, items, orders: completed.length };
   }, [filtered]);
 
   const bestSellers = useMemo(() => {
-    const map = new Map<string, { name: string; emoji: string; qty: number; revenue: number }>();
-    filtered.forEach((s) =>
-      s.items.forEach((i) => {
-        const cur = map.get(i.id) ?? { name: i.name, emoji: i.emoji, qty: 0, revenue: 0 };
-        cur.qty += i.qty;
-        cur.revenue += i.qty * i.price;
-        map.set(i.id, cur);
-      }),
-    );
+    const map = new Map<
+      string,
+      { name: string; emoji: string; qty: number; revenue: number }
+    >();
+    filtered
+      .filter((sale) => sale.status !== "refunded" && sale.status !== "voided")
+      .forEach((s) =>
+        s.items.forEach((i) => {
+          const cur = map.get(i.id) ?? {
+            name: i.name,
+            emoji: i.emoji,
+            qty: 0,
+            revenue: 0,
+          };
+          cur.qty += i.qty;
+          cur.revenue += i.qty * i.price;
+          map.set(i.id, cur);
+        }),
+      );
     return Array.from(map.values()).sort((a, b) => b.qty - a.qty);
   }, [filtered]);
 
@@ -101,25 +139,47 @@ function TransactionsPage() {
       headStyles: { fillColor: [30, 30, 30] },
     });
 
-    const afterBest = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 10;
+    const afterBest =
+      (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable
+        .finalY + 10;
     doc.setFontSize(13);
     doc.text("Orders", 14, afterBest);
 
     autoTable(doc, {
       startY: afterBest + 4,
-      head: [["Order", "Date", "Items", "Total"]],
+      head: [["Order", "Date", "Status", "Items", "Total"]],
       body: filtered.map((s) => [
-        s.id.split("-")[0],
+        s.displayNumber
+          ? `#${String(s.displayNumber).padStart(6, "0")}`
+          : s.id.split("-")[0],
         new Date(s.date).toLocaleString(),
+        s.status === "refunded" ? "Refunded" : "Completed",
         s.items.map((i) => `${i.name} x${i.qty}`).join(", "),
         `${settings.currency} ${s.total.toLocaleString()}`,
       ]),
       headStyles: { fillColor: [30, 30, 30] },
       styles: { fontSize: 9, cellWidth: "wrap" },
-      columnStyles: { 2: { cellWidth: 80 } },
+      columnStyles: { 3: { cellWidth: 70 } },
     });
 
     doc.save(`sales-${period}-${dateStr}.pdf`);
+  };
+
+  const refund = async (sale: Sale) => {
+    if (sale.status === "refunded" || sale.status === "voided") return;
+    if (
+      !window.confirm(
+        `Order ${sale.displayNumber ? `#${String(sale.displayNumber).padStart(6, "0")}` : sale.id.split("-")[0]} ကို refund လုပ်မှာ သေချာပါသလား? Stock ကို ပြန်တိုးပေးပါမယ်။`,
+      )
+    )
+      return;
+    try {
+      setError(null);
+      await store.refundSale(sale.id);
+      setSales(await store.getSales());
+    } catch (err) {
+      setError(getErrorMessage(err, "Refund လုပ်၍မရပါ"));
+    }
   };
 
   return (
@@ -127,7 +187,9 @@ function TransactionsPage() {
       <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Sales & Reports</h1>
-          <p className="text-sm text-muted-foreground">{sales.length} total transactions</p>
+          <p className="text-sm text-muted-foreground">
+            {sales.length} total transactions
+          </p>
         </div>
         <button
           onClick={exportPDF}
@@ -136,6 +198,11 @@ function TransactionsPage() {
           <Download className="h-4 w-4" /> Export PDF
         </button>
       </div>
+      {error && (
+        <div className="mb-4 rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
 
       {/* Period selector */}
       <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-border bg-card p-3">
@@ -145,7 +212,9 @@ function TransactionsPage() {
               key={p}
               onClick={() => setPeriod(p)}
               className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize transition ${
-                period === p ? "bg-primary text-primary-foreground shadow" : "text-muted-foreground"
+                period === p
+                  ? "bg-primary text-primary-foreground shadow"
+                  : "text-muted-foreground"
               }`}
             >
               {p}
@@ -158,7 +227,9 @@ function TransactionsPage() {
           onChange={(e) => setDateStr(e.target.value)}
           className="rounded-lg border border-border bg-background px-3 py-1.5 text-sm"
         />
-        <span className="ml-auto text-sm text-muted-foreground">{periodLabel}</span>
+        <span className="ml-auto text-sm text-muted-foreground">
+          {periodLabel}
+        </span>
       </div>
 
       {/* Summary */}
@@ -184,7 +255,9 @@ function TransactionsPage() {
           <span className="text-xs text-muted-foreground">{periodLabel}</span>
         </div>
         {bestSellers.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No sales in this period.</p>
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No sales in this period.
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -198,8 +271,13 @@ function TransactionsPage() {
               </thead>
               <tbody>
                 {bestSellers.slice(0, 10).map((b, idx) => (
-                  <tr key={b.name} className="border-b border-border/60 last:border-0">
-                    <td className="py-2.5 font-semibold text-muted-foreground">{idx + 1}</td>
+                  <tr
+                    key={b.name}
+                    className="border-b border-border/60 last:border-0"
+                  >
+                    <td className="py-2.5 font-semibold text-muted-foreground">
+                      {idx + 1}
+                    </td>
                     <td className="py-2.5">
                       <div className="flex items-center gap-2">
                         <span className="text-lg">{b.emoji}</span>
@@ -220,21 +298,45 @@ function TransactionsPage() {
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold">Orders</h2>
         <span className="text-sm text-muted-foreground">
-          Total: <span className="font-semibold text-foreground">{fmt(stats.revenue)}</span>
+          Total:{" "}
+          <span className="font-semibold text-foreground">
+            {fmt(stats.revenue)}
+          </span>
         </span>
       </div>
       <div className="space-y-3">
         {filtered.length === 0 && (
-          <p className="py-10 text-center text-sm text-muted-foreground">No sales in this period.</p>
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            No sales in this period.
+          </p>
         )}
         {filtered.map((s) => (
-          <div key={s.id} className="rounded-2xl border border-border bg-card p-4">
+          <div
+            key={s.id}
+            className={`rounded-2xl border bg-card p-4 ${s.status === "refunded" ? "border-destructive/30 opacity-75" : "border-border"}`}
+          >
             <div className="mb-2 flex items-center justify-between">
               <div>
-                <p className="font-semibold">Order {s.id.split("-")[0]}</p>
-                <p className="text-xs text-muted-foreground">{new Date(s.date).toLocaleString()}</p>
+                <p className="font-semibold">
+                  Order{" "}
+                  {s.displayNumber
+                    ? `#${String(s.displayNumber).padStart(6, "0")}`
+                    : s.id.split("-")[0]}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {new Date(s.date).toLocaleString()}
+                </p>
               </div>
-              <p className="text-lg font-bold">{fmt(s.total)}</p>
+              <div className="text-right">
+                <p className="text-lg font-bold">{fmt(s.total)}</p>
+                <p
+                  className={`text-xs font-semibold ${s.status === "refunded" ? "text-destructive" : "text-emerald-600"}`}
+                >
+                  {s.status === "refunded"
+                    ? "Refunded"
+                    : (s.paymentMethod ?? "cash")}
+                </p>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
               {s.items.map((i) => (
@@ -245,6 +347,24 @@ function TransactionsPage() {
                   {i.emoji} {i.name} × {i.qty}
                 </span>
               ))}
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                onClick={() => printReceipt(s, settings)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-accent"
+              >
+                <Printer className="h-3.5 w-3.5" /> Receipt
+              </button>
+              {canRefund &&
+                s.status !== "refunded" &&
+                s.status !== "voided" && (
+                  <button
+                    onClick={() => refund(s)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 px-3 py-1.5 text-xs font-semibold text-destructive hover:bg-destructive/10"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" /> Refund
+                  </button>
+                )}
             </div>
           </div>
         ))}
