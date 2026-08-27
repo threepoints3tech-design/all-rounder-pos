@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Users,
   ShieldCheck,
@@ -20,6 +20,7 @@ import {
 import { auth, type UserProfile } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { createClient } from "@supabase/supabase-js";
+import { TurnstileCaptcha } from "@/components/TurnstileCaptcha";
 import { getErrorMessage } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin")({
@@ -68,8 +69,14 @@ function AdminPage() {
   const [subMonths, setSubMonths] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [showModalPassword, setShowModalPassword] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
   const navigate = useNavigate();
+  const turnstileSiteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY?.trim();
+  const captchaEnabled = Boolean(turnstileSiteKey);
+  const handleCaptchaToken = useCallback((token: string | null) => {
+    setCaptchaToken(token);
+  }, []);
 
   // Verify super_admin role and load tenants
   const verifyAndLoadData = async () => {
@@ -237,6 +244,12 @@ function AdminPage() {
   const handleCreateShop = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supabase) return;
+
+    if (captchaEnabled && !captchaToken) {
+      setError("လုံခြုံရေးအတည်ပြုချက် ပြီးအောင် ခေတ္တစောင့်ပေးပါ");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
@@ -272,6 +285,7 @@ function AdminPage() {
           data: {
             tenant_id: tenant.id,
           },
+          captchaToken: captchaToken ?? undefined,
         },
       });
 
@@ -289,6 +303,7 @@ function AdminPage() {
       setOwnerEmail("");
       setOwnerPassword("");
       setSubMonths(1);
+      setCaptchaToken(null);
       verifyAndLoadData();
     } catch (err) {
       console.error(err);
@@ -578,6 +593,14 @@ function AdminPage() {
                     <option value={12}>၁ နှစ် (၁၂ လ)</option>
                   </select>
                 </div>
+
+                {captchaEnabled && turnstileSiteKey && (
+                  <TurnstileCaptcha
+                    key="admin-shop-captcha"
+                    siteKey={turnstileSiteKey}
+                    onTokenChange={handleCaptchaToken}
+                  />
+                )}
 
                 <div className="flex justify-end gap-2 pt-2">
                   <button
