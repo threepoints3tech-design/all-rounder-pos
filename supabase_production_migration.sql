@@ -474,9 +474,9 @@ begin
   end if;
 
   select coalesce((
-    select tax_rate
-    from public.settings
-    where tenant_id = target_tenant_id
+    select settings.tax_rate
+    from public.settings settings
+    where settings.tenant_id = target_tenant_id
     limit 1
   ), 0)
   into tax_rate;
