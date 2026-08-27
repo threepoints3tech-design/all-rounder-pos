@@ -88,7 +88,6 @@ Deno.serve(async (request) => {
     const { error: inviteUserError } =
       await adminClient.auth.admin.inviteUserByEmail(invite.email, {
         data: { tenant_id: owner.tenant_id },
-        redirectTo: Deno.env.get("SITE_URL"),
       });
     if (inviteUserError) throw inviteUserError;
 
