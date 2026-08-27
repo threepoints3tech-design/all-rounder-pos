@@ -12,8 +12,12 @@ npm run build
 ## Deploy command
 
 ```powershell
-npx wrangler deploy --config .output/server/wrangler.json
+$utcDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-dd")
+npx wrangler deploy --config .output/server/wrangler.json --compatibility-date $utcDate
 ```
+
+The UTC date override prevents deployments around midnight in Myanmar from
+generating a Cloudflare-incompatible future compatibility date.
 
 Cloudflare must have the same build-time public variables that are used locally:
 
