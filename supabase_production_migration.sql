@@ -802,6 +802,21 @@ revoke all on function public.complete_sale(jsonb, text, numeric) from anon;
 revoke all on function public.refund_sale(text) from anon;
 revoke all on function public.adjust_product_stock(text, integer, text) from anon;
 
+revoke all on function public.handle_new_user() from authenticated;
+revoke all on function public.handle_new_tenant() from authenticated;
+revoke all on function public.is_super_admin() from authenticated;
+revoke all on function public.tenant_subscription_is_active(uuid) from authenticated;
+revoke all on function public.current_user_tenant_id() from authenticated;
+revoke all on function public.is_active_tenant_member(uuid) from authenticated;
+revoke all on function public.is_active_tenant_owner(uuid) from authenticated;
+revoke all on function public.get_pos_settings() from authenticated;
+revoke all on function public.write_audit_log(uuid, text, text, text, jsonb) from authenticated;
+revoke all on function public.create_staff_invite(text) from authenticated;
+revoke all on function public.deactivate_staff(uuid) from authenticated;
+revoke all on function public.complete_sale(jsonb, text, numeric) from authenticated;
+revoke all on function public.refund_sale(text) from authenticated;
+revoke all on function public.adjust_product_stock(text, integer, text) from authenticated;
+
 grant execute on function public.is_super_admin() to authenticated;
 grant execute on function public.tenant_subscription_is_active(uuid) to authenticated;
 grant execute on function public.current_user_tenant_id() to authenticated;
