@@ -80,6 +80,10 @@ import { auth } from "../lib/auth";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   {
+    // Supabase keeps its session in the browser. SSR would not have that session
+    // and can render protected POS screens before the client-side guard runs.
+    // Run routes client-side so the guard executes during hydration instead.
+    ssr: false,
     beforeLoad: async ({ location }) => {
       if (typeof window === "undefined") return;
       const pathname = location.pathname;
