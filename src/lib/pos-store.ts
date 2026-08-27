@@ -243,8 +243,10 @@ export const store = {
     if (isSuspended()) {
       throw new Error("Account suspended");
     }
-    const pKey = await getProductsKey();
     const tenantId = await getTenantId();
+    // Resolve the tenant once so the cache key and the database query always
+    // refer to the same shop, even while Supabase is refreshing a session.
+    const pKey = tenantId ? `pos.products.${tenantId}` : "pos.products.default";
     if (!hasSupabase || !tenantId) {
       return readLocal<Product[]>(pKey, seedProducts);
     }
@@ -260,6 +262,11 @@ export const store = {
       return data as Product[];
     } catch (err) {
       console.warn("Supabase fetch products failed:", err);
+      // A temporary network/auth failure must not make a shop look empty after
+      // navigation. This cache is tenant-scoped and is populated after every
+      // successful catalogue read or write.
+      const cachedProducts = readLocal<Product[] | null>(pKey, null);
+      if (cachedProducts !== null) return cachedProducts;
       throw err;
     }
   },

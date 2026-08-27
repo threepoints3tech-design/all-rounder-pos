@@ -5,9 +5,11 @@ This project is deployed as one Cloudflare Worker with static assets. Supabase r
 ## Build command
 
 ```powershell
-$env:NITRO_PRESET = "cloudflare"
+$env:NITRO_PRESET = "cloudflare_module"
 npm run build
 ```
+
+`cloudflare_module` is the preset name used by the installed Nitro version.
 
 ## Deploy command
 

@@ -46,6 +46,7 @@ function POSPage() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("All");
   const [error, setError] = useState<string | null>(null);
+  const [errorTitle, setErrorTitle] = useState("POS data error");
   const [orderNo, setOrderNo] = useState<number>(1);
   const [now, setNow] = useState<string>("");
   const [scan, setScan] = useState("");
@@ -58,9 +59,55 @@ function POSPage() {
   const [lastSale, setLastSale] = useState<Sale | null>(null);
 
   useEffect(() => {
-    store.getProducts().then(setProducts);
-    store.getSettings().then(setSettings);
-    store.getSales().then((sales) => setOrderNo(sales.length + 1));
+    let active = true;
+
+    const loadProducts = async () => {
+      try {
+        const loadedProducts = await store.getProducts();
+        if (active) setProducts(loadedProducts);
+      } catch (err) {
+        console.error(err);
+        if (active) {
+          setErrorTitle("ပစ္စည်းများကို ဖွင့်၍မရပါ");
+          setError(
+            getErrorMessage(
+              err,
+              "ပစ္စည်းများကို database မှ ဆွဲထုတ်၍မရပါ။ Internet connection နှင့် account ကို စစ်ပေးပါ။",
+            ),
+          );
+        }
+      }
+    };
+
+    const loadSettings = async () => {
+      try {
+        const loadedSettings = await store.getSettings();
+        if (active) setSettings(loadedSettings);
+      } catch (err) {
+        console.error(err);
+        if (active) {
+          setErrorTitle("ဆိုင် settings များကို ဖွင့်၍မရပါ");
+          setError(getErrorMessage(err, "ဆိုင် settings များကို ဆွဲထုတ်၍မရပါ"));
+        }
+      }
+    };
+
+    const loadSales = async () => {
+      try {
+        const sales = await store.getSales();
+        if (active) setOrderNo(sales.length + 1);
+      } catch (err) {
+        console.error(err);
+        if (active) {
+          setErrorTitle("အရောင်းမှတ်တမ်းများကို ဖွင့်၍မရပါ");
+          setError(getErrorMessage(err, "အရောင်းမှတ်တမ်းများကို ဆွဲထုတ်၍မရပါ"));
+        }
+      }
+    };
+
+    void loadProducts();
+    void loadSettings();
+    void loadSales();
     const tick = () =>
       setNow(
         new Date().toLocaleString(undefined, {
@@ -74,7 +121,10 @@ function POSPage() {
       );
     tick();
     const t = setInterval(tick, 30_000);
-    return () => clearInterval(t);
+    return () => {
+      active = false;
+      clearInterval(t);
+    };
   }, []);
 
   const categories = useMemo(() => {
@@ -161,6 +211,7 @@ function POSPage() {
     if (cart.length === 0) return;
     try {
       setError(null);
+      setErrorTitle("ငွေရှင်းခြင်း အဆင်မပြေပါ (Checkout Error)");
       if (paymentMethod === "cash" && tendered < total) {
         throw new Error("လက်ခံငွေက စုစုပေါင်းကျသင့်ငွေထက် နည်းနေပါသည်");
       }
@@ -188,9 +239,7 @@ function POSPage() {
         <div className="mb-5 flex items-center gap-3 rounded-2xl border border-destructive/20 bg-destructive-soft/10 p-4 text-xs text-destructive">
           <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
           <div>
-            <p className="font-semibold">
-              ငွေရှင်းခြင်း အဆင်မပြေပါ (Checkout Error):
-            </p>
+            <p className="font-semibold">{errorTitle}:</p>
             <p className="mt-0.5 opacity-90">{error}</p>
           </div>
         </div>
