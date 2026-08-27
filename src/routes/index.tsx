@@ -25,6 +25,9 @@ import {
 } from "@/lib/pos-store";
 import { printReceipt } from "@/lib/receipt";
 import { getErrorMessage } from "@/lib/utils";
+import { listenForProductChanges } from "@/lib/product-sync";
+
+const PRODUCT_REFRESH_INTERVAL_MS = 10_000;
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -57,17 +60,21 @@ function POSPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [amountTendered, setAmountTendered] = useState("");
   const [lastSale, setLastSale] = useState<Sale | null>(null);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
 
   useEffect(() => {
     let active = true;
 
-    const loadProducts = async () => {
+    let productsLoading = false;
+    const loadProducts = async (showError = true) => {
+      if (productsLoading) return;
+      productsLoading = true;
       try {
         const loadedProducts = await store.getProducts();
         if (active) setProducts(loadedProducts);
       } catch (err) {
         console.error(err);
-        if (active) {
+        if (active && showError) {
           setErrorTitle("ပစ္စည်းများကို ဖွင့်၍မရပါ");
           setError(
             getErrorMessage(
@@ -76,6 +83,8 @@ function POSPage() {
             ),
           );
         }
+      } finally {
+        productsLoading = false;
       }
     };
 
@@ -121,9 +130,24 @@ function POSPage() {
       );
     tick();
     const t = setInterval(tick, 30_000);
+    const refreshProducts = () => void loadProducts(false);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshProducts();
+    };
+    const stopListening = listenForProductChanges(refreshProducts);
+    const refreshTimer = window.setInterval(
+      refreshProducts,
+      PRODUCT_REFRESH_INTERVAL_MS,
+    );
+    window.addEventListener("focus", refreshProducts);
+    document.addEventListener("visibilitychange", onVisibilityChange);
     return () => {
       active = false;
       clearInterval(t);
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshProducts);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stopListening();
     };
   }, []);
 
@@ -208,7 +232,8 @@ function POSPage() {
     paymentMethod === "cash" && tendered >= total ? tendered - total : 0;
 
   const checkout = async () => {
-    if (cart.length === 0) return;
+    if (cart.length === 0 || isCheckingOut) return;
+    setIsCheckingOut(true);
     try {
       setError(null);
       setErrorTitle("ငွေရှင်းခြင်း အဆင်မပြေပါ (Checkout Error)");
@@ -228,6 +253,8 @@ function POSPage() {
     } catch (err) {
       console.error(err);
       setError(getErrorMessage(err, "ငွေရှင်းခြင်း ဆာဗာသို့ ပေးပို့၍မရပါ"));
+    } finally {
+      setIsCheckingOut(false);
     }
   };
 
@@ -518,17 +545,23 @@ function POSPage() {
                 <span className="mt-1 block text-right text-xs text-muted-foreground">
                   ပြန်အမ်းငွေ: {fmt(estimatedChange)}
                 </span>
+                {amountTendered && tendered < total && (
+                  <span className="mt-1 block text-xs text-destructive">
+                    လက်ခံငွေက စုစုပေါင်း {fmt(total)} ထက် နည်းနေသဖြင့် Check Out မလုပ်နိုင်သေးပါ။
+                  </span>
+                )}
               </label>
             )}
             <button
               onClick={checkout}
               disabled={
                 cart.length === 0 ||
+                isCheckingOut ||
                 (paymentMethod === "cash" && tendered < total)
               }
               className="w-full rounded-xl bg-primary py-3 text-sm font-semibold uppercase tracking-wide text-primary-foreground shadow-[var(--shadow-soft)] transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Check Out
+              {isCheckingOut ? "ငွေရှင်းနေသည်..." : "Check Out"}
             </button>
             <button
               onClick={() => setCart([])}

@@ -206,6 +206,7 @@ export const seedProducts: Product[] = [
 
 import { supabase } from "./supabase";
 import { auth } from "./auth";
+import { announceProductChange } from "./product-sync";
 
 async function getTenantId(): Promise<string | null> {
   const profile = await auth.getUserProfile();
@@ -280,7 +281,10 @@ export const store = {
     // Keep local storage updated as cache / fallback
     writeLocal(pKey, products);
 
-    if (!hasSupabase || !tenantId) return;
+    if (!hasSupabase || !tenantId) {
+      announceProductChange(tenantId);
+      return;
+    }
     try {
       // Catalogue changes are upserts only. Removing absent rows here would let a
       // stale browser erase products (or sold-product history) from another user.
@@ -292,6 +296,7 @@ export const store = {
         .from("products")
         .upsert(productsWithTenant);
       if (upsertError) throw upsertError;
+      announceProductChange(tenantId);
     } catch (err) {
       console.error("Supabase setProducts failed:", err);
       throw err;
@@ -309,6 +314,7 @@ export const store = {
 
     if (!hasSupabase || !tenantId) {
       writeLocal(pKey, nextProducts);
+      announceProductChange(tenantId);
       return product;
     }
     const { error } = await supabase
@@ -316,6 +322,7 @@ export const store = {
       .upsert({ ...product, tenant_id: tenantId });
     if (error) throw error;
     writeLocal(pKey, nextProducts);
+    announceProductChange(tenantId);
     return product;
   },
 
@@ -337,6 +344,7 @@ export const store = {
         (product) => product.id !== productId,
       ),
     );
+    announceProductChange(tenantId);
   },
 
   getSales: async (): Promise<Sale[]> => {
@@ -465,6 +473,7 @@ export const store = {
         }),
       );
       writeLocal(sKey, [sale, ...localSales]);
+      announceProductChange(tenantId);
       return sale;
     }
 
@@ -479,6 +488,7 @@ export const store = {
       const sale = data as Sale;
       const localSales = readLocal<Sale[]>(sKey, []);
       writeLocal(sKey, [sale, ...localSales]);
+      announceProductChange(tenantId);
       return sale;
     } catch (err) {
       console.error("Supabase completeSale failed:", err);
@@ -524,6 +534,7 @@ export const store = {
         sale.id === saleId ? { ...sale, status: "refunded" } : sale,
       ),
     );
+    announceProductChange(tenantId);
     return data;
   },
 
@@ -552,6 +563,7 @@ export const store = {
       adjustment_note: note ?? null,
     });
     if (error) throw error;
+    announceProductChange(tenantId);
     return Number(data);
   },
 

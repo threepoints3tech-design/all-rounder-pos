@@ -19,6 +19,9 @@ import { BarcodeScanner } from "@/components/pos/BarcodeScanner";
 import { store, type Product } from "@/lib/pos-store";
 import { auth } from "@/lib/auth";
 import { getErrorMessage } from "@/lib/utils";
+import { listenForProductChanges } from "@/lib/product-sync";
+
+const PRODUCT_REFRESH_INTERVAL_MS = 10_000;
 
 const LOW_STOCK_THRESHOLD = 5;
 type StockFilter = "all" | "low" | "out";
@@ -61,16 +64,50 @@ function ProductsPage() {
     });
 
   useEffect(() => {
+    let active = true;
+    let productsLoading = false;
+    const refreshProducts = async (showError = true) => {
+      if (productsLoading) return;
+      productsLoading = true;
+      try {
+        const loadedProducts = await store.getProducts();
+        if (active) setProducts(loadedProducts);
+      } catch (err) {
+        console.error(err);
+        if (active && showError) {
+          setError(
+            getErrorMessage(err, "ပစ္စည်းများကို database မှ ဆွဲထုတ်၍မရပါ"),
+          );
+        }
+      } finally {
+        productsLoading = false;
+      }
+    };
+
     auth
       .getUserProfile()
       .then((profile) => setCanManageProducts(profile?.role === "owner"));
-    store
-      .getProducts()
-      .then(setProducts)
-      .catch((err) => {
-        console.error(err);
-        setError(err.message || "ပစ္စည်းများကို database မှ ဆွဲထုတ်၍မရပါ");
-      });
+    void refreshProducts();
+
+    const refreshSilently = () => void refreshProducts(false);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refreshSilently();
+    };
+    const stopListening = listenForProductChanges(refreshSilently);
+    const refreshTimer = window.setInterval(
+      refreshSilently,
+      PRODUCT_REFRESH_INTERVAL_MS,
+    );
+    window.addEventListener("focus", refreshSilently);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      active = false;
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshSilently);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      stopListening();
+    };
   }, []);
 
   const stats = useMemo(() => {
